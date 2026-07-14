@@ -1,0 +1,27 @@
+[package]
+name = "gitoutbox"
+version = "0.1.0"
+description = "GitOutbox — prepare work now, ship it on your schedule."
+authors = ["GitOutbox"]
+edition = "2021"
+default-run = "gitoutbox"
+
+[lib]
+name = "gitoutbox_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+gitoutbox-core = { path = "../crates/gitoutbox-core" }
+tauri-plugin-notification = "2"
+tokio = { version = "1", features = ["time"] }
+
+[dev-dependencies]
+gitoutbox-core = { path = "../crates/gitoutbox-core" }
