@@ -480,6 +480,7 @@ pub fn run() {
             commands::set_missed_schedule_policy,
             commands::compute_schedule,
             commands::count_scheduled_items,
+            commands::retry_paused_items,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitOutbox");

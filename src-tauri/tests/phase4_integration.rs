@@ -267,3 +267,251 @@ fn execution_paths_contain_no_broad_reset_cleanup() {
     assert!(!commands.contains("reset_index_to_head"));
     assert!(!commands.contains("git reset"));
 }
+
+#[test]
+fn verify_staged_fingerprints_e2e_untracked() {
+    let (repo, _) = baseline_repo("e2e-untracked");
+    let path = db_path("e2e-untracked-db");
+    let db = Db::open(&path).unwrap();
+    db.set_execution_mode("commit_only").unwrap();
+    let r = db.add_repository(repo.to_str().unwrap(), "test").unwrap();
+
+    std::fs::write(repo.join("new.txt"), "untracked content\n").unwrap();
+
+    let id = db.create_queue_item(r.id, "main", "group", "feat: add untracked", &[QueueItemFile {
+        path: "new.txt".to_string(), original_path: None, change_type: "untracked".into(),
+    }]).unwrap();
+
+    db.schedule_items_with_fingerprints(r.id, &[(id, 1000)], repo.to_str().unwrap()).unwrap();
+    
+    let locks = ExecutionLocks::new();
+    let commit_hash = execution::execute_item(&db, &locks, id, repo.to_str().unwrap()).unwrap();
+    
+    assert!(!commit_hash.is_empty());
+    assert_eq!(raw_status(&db, id).0, "Completed");
+    assert_eq!(git(&repo, &["rev-list", "--count", "HEAD"]), "2");
+}
+
+#[test]
+fn verify_staged_fingerprints_e2e_modified() {
+    let (repo, _) = baseline_repo("e2e-modified");
+    let path = db_path("e2e-modified-db");
+    let db = Db::open(&path).unwrap();
+    db.set_execution_mode("commit_only").unwrap();
+    let r = db.add_repository(repo.to_str().unwrap(), "test").unwrap();
+
+    std::fs::write(repo.join("baseline.txt"), "modified baseline\n").unwrap();
+
+    let id = db.create_queue_item(r.id, "main", "group", "feat: modify file", &[QueueItemFile {
+        path: "baseline.txt".to_string(), original_path: None, change_type: "modified".into(),
+    }]).unwrap();
+
+    db.schedule_items_with_fingerprints(r.id, &[(id, 1000)], repo.to_str().unwrap()).unwrap();
+    
+    let locks = ExecutionLocks::new();
+    let commit_hash = execution::execute_item(&db, &locks, id, repo.to_str().unwrap()).unwrap();
+    
+    assert!(!commit_hash.is_empty());
+    assert_eq!(raw_status(&db, id).0, "Completed");
+    assert_eq!(git(&repo, &["rev-list", "--count", "HEAD"]), "2");
+}
+
+#[test]
+fn verify_staged_fingerprints_e2e_deleted() {
+    let (repo, _) = baseline_repo("e2e-deleted");
+    let path = db_path("e2e-deleted-db");
+    let db = Db::open(&path).unwrap();
+    db.set_execution_mode("commit_only").unwrap();
+    let r = db.add_repository(repo.to_str().unwrap(), "test").unwrap();
+
+    std::fs::remove_file(repo.join("baseline.txt")).unwrap();
+
+    let id = db.create_queue_item(r.id, "main", "group", "feat: delete file", &[QueueItemFile {
+        path: "baseline.txt".to_string(), original_path: None, change_type: "deleted".into(),
+    }]).unwrap();
+
+    db.schedule_items_with_fingerprints(r.id, &[(id, 1000)], repo.to_str().unwrap()).unwrap();
+    
+    let locks = ExecutionLocks::new();
+    let commit_hash = execution::execute_item(&db, &locks, id, repo.to_str().unwrap()).unwrap();
+    
+    assert!(!commit_hash.is_empty());
+    assert_eq!(raw_status(&db, id).0, "Completed");
+    assert_eq!(git(&repo, &["rev-list", "--count", "HEAD"]), "2");
+}
+
+#[test]
+fn verify_staged_fingerprints_e2e_renamed() {
+    let (repo, _) = baseline_repo("e2e-renamed");
+    let path = db_path("e2e-renamed-db");
+    let db = Db::open(&path).unwrap();
+    db.set_execution_mode("commit_only").unwrap();
+    let r = db.add_repository(repo.to_str().unwrap(), "test").unwrap();
+
+    std::fs::rename(repo.join("baseline.txt"), repo.join("renamed.txt")).unwrap();
+
+    let id = db.create_queue_item(r.id, "main", "group", "feat: rename file", &[QueueItemFile {
+        path: "renamed.txt".to_string(), original_path: Some("baseline.txt".to_string()), change_type: "renamed".into(),
+    }]).unwrap();
+
+    db.schedule_items_with_fingerprints(r.id, &[(id, 1000)], repo.to_str().unwrap()).unwrap();
+    
+    let locks = ExecutionLocks::new();
+    let commit_hash = execution::execute_item(&db, &locks, id, repo.to_str().unwrap()).unwrap();
+    
+    assert!(!commit_hash.is_empty());
+    assert_eq!(raw_status(&db, id).0, "Completed");
+    assert_eq!(git(&repo, &["rev-list", "--count", "HEAD"]), "2");
+}
+
+#[test]
+fn verify_multiple_new_files_manual_regression() {
+    let (repo, _) = baseline_repo("manual-regression");
+    let path = db_path("manual-regression-db");
+    let db = Db::open(&path).unwrap();
+    db.set_execution_mode("commit_only").unwrap();
+    let r = db.add_repository(repo.to_str().unwrap(), "test").unwrap();
+
+    // Create multiple newly-added files
+    std::fs::write(repo.join("file_a.txt"), "content a\n").unwrap();
+    std::fs::write(repo.join("file_b.txt"), "content b\n").unwrap();
+
+    // Schedule them in one item
+    let id = db.create_queue_item(r.id, "main", "group", "feat: add multiple files", &[
+        QueueItemFile { path: "file_a.txt".to_string(), original_path: None, change_type: "untracked".into() },
+        QueueItemFile { path: "file_b.txt".to_string(), original_path: None, change_type: "untracked".into() },
+    ]).unwrap();
+
+    db.schedule_items_with_fingerprints(r.id, &[(id, 1000)], repo.to_str().unwrap()).unwrap();
+    
+    let locks = ExecutionLocks::new();
+    let commit_hash = execution::execute_item(&db, &locks, id, repo.to_str().unwrap()).unwrap();
+    
+    assert!(!commit_hash.is_empty());
+    
+    // Verify item is completed
+    assert_eq!(raw_status(&db, id).0, "Completed");
+    
+    // Verify only one commit was created (baseline is 1, plus this 1 = 2)
+    assert_eq!(git(&repo, &["rev-list", "--count", "HEAD"]), "2");
+    
+    // Verify staged files are empty now
+    let out = git(&repo, &["status", "--porcelain"]);
+    assert!(out.is_empty(), "Expected clean worktree, got: {}", out);
+}
+
+#[test]
+fn test_paused_recovery_draft_and_reschedule() {
+    let (repo, _) = baseline_repo("paused-recovery");
+    let path = db_path("paused-recovery-db");
+    let db = Db::open(&path).unwrap();
+    db.set_execution_mode("commit_only").unwrap();
+    let r = db.add_repository(repo.to_str().unwrap(), "test").unwrap();
+
+    std::fs::write(repo.join("file_recovery.txt"), "hello recovery\n").unwrap();
+
+    let id = db.create_queue_item(r.id, "main", "group", "feat: recovery test", &[
+        QueueItemFile { path: "file_recovery.txt".to_string(), original_path: None, change_type: "untracked".into() },
+    ]).unwrap();
+
+    db.schedule_items_with_fingerprints(r.id, &[(id, 1000)], repo.to_str().unwrap()).unwrap();
+
+    // Directly update status to Paused and set error in DB to simulate failure
+    {
+        let conn = db.0.lock().unwrap();
+        conn.execute(
+            "UPDATE queue_items SET status = 'Paused', retry_count = 3, last_error = 'Some simulated staging error' WHERE id = ?1",
+            [id],
+        ).unwrap();
+    }
+
+    // Verify it is Paused and has the error
+    let item = db.get_queue_item(id).unwrap();
+    assert_eq!(item.status, "Paused");
+    assert_eq!(item.last_error.as_deref(), Some("Some simulated staging error"));
+
+    // 1. Test Reschedule
+    db.reschedule_item(id, 2000).unwrap();
+    let item = db.get_queue_item(id).unwrap();
+    assert_eq!(item.status, "Scheduled");
+    assert_eq!(item.scheduled_time, Some(2000));
+    assert_eq!(item.last_error, None);
+    {
+        let conn = db.0.lock().unwrap();
+        let retry_count: i64 = conn.query_row(
+            "SELECT retry_count FROM queue_items WHERE id = ?1",
+            [id],
+            |r| r.get(0),
+        ).unwrap();
+        assert_eq!(retry_count, 0);
+    }
+
+    // Transition back to Paused for next test
+    {
+        let conn = db.0.lock().unwrap();
+        conn.execute(
+            "UPDATE queue_items SET status = 'Paused', retry_count = 3, last_error = 'Another error' WHERE id = ?1",
+            [id],
+        ).unwrap();
+    }
+
+    // 2. Test Return to Draft
+    db.unschedule_items(&[id]).unwrap();
+    let item = db.get_queue_item(id).unwrap();
+    assert_eq!(item.status, "Draft");
+    assert_eq!(item.scheduled_time, None);
+    assert_eq!(item.last_error, None);
+
+    // Verify fingerprints are cleared in DB
+    {
+        let conn = db.0.lock().unwrap();
+        let fingerprint: Option<String> = conn.query_row(
+            "SELECT fingerprint FROM queue_item_files WHERE queue_item_id = ?1",
+            [id],
+            |r| r.get(0),
+        ).unwrap();
+        assert!(fingerprint.is_none());
+    }
+}
+
+#[test]
+fn test_paused_bulk_retry() {
+    let (repo, _) = baseline_repo("paused-bulk");
+    let path = db_path("paused-bulk-db");
+    let db = Db::open(&path).unwrap();
+    db.set_execution_mode("commit_only").unwrap();
+    let r = db.add_repository(repo.to_str().unwrap(), "test").unwrap();
+
+    std::fs::write(repo.join("file_bulk_1.txt"), "hello bulk 1\n").unwrap();
+    std::fs::write(repo.join("file_bulk_2.txt"), "hello bulk 2\n").unwrap();
+
+    let id1 = db.create_queue_item(r.id, "main", "group", "feat: bulk 1", &[
+        QueueItemFile { path: "file_bulk_1.txt".to_string(), original_path: None, change_type: "untracked".into() },
+    ]).unwrap();
+    let id2 = db.create_queue_item(r.id, "main", "group", "feat: bulk 2", &[
+        QueueItemFile { path: "file_bulk_2.txt".to_string(), original_path: None, change_type: "untracked".into() },
+    ]).unwrap();
+
+    db.schedule_items_with_fingerprints(r.id, &[(id1, 1000), (id2, 1001)], repo.to_str().unwrap()).unwrap();
+
+    // Simulate failure by setting status to Paused
+    {
+        let conn = db.0.lock().unwrap();
+        conn.execute("UPDATE queue_items SET status = 'Paused', last_error = 'Staging error' WHERE id = ?1", [id1]).unwrap();
+        conn.execute("UPDATE queue_items SET status = 'Paused', last_error = 'Fingerprint error' WHERE id = ?1", [id2]).unwrap();
+    }
+
+    // Call execution logic sequentially (like retry_paused_items command)
+    let locks = ExecutionLocks::new();
+    let _ = execution::execute_item(&db, &locks, id1, repo.to_str().unwrap());
+    let _ = execution::execute_item(&db, &locks, id2, repo.to_str().unwrap());
+
+    // Verify both succeeded and transitioned to Completed
+    assert_eq!(raw_status(&db, id1).0, "Completed");
+    assert_eq!(raw_status(&db, id2).0, "Completed");
+
+    // Verify commits exist in git history (baseline is 1, plus 2 = 3)
+    assert_eq!(git(&repo, &["rev-list", "--count", "HEAD"]), "3");
+}
+
+

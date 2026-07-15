@@ -350,10 +350,15 @@ pub fn verify_staged_fingerprints(
                     hash,
                 }
             }
-            Fingerprint::Modified { .. } | Fingerprint::Untracked { .. } => {
+            Fingerprint::Modified { .. } => {
                 let hash = get_staged_hash(repo_root, &file.path)
                     .ok_or_else(|| format!("Staged fingerprint mismatch: file '{}' not found in staging area", file.path))?;
                 Fingerprint::Modified { hash }
+            }
+            Fingerprint::Untracked { .. } => {
+                let hash = get_staged_hash(repo_root, &file.path)
+                    .ok_or_else(|| format!("Staged fingerprint mismatch: file '{}' not found in staging area", file.path))?;
+                Fingerprint::Untracked { hash }
             }
         };
 
@@ -1123,5 +1128,79 @@ mod tests {
         std::fs::write(repo.join("b.rs"), "b2\n").unwrap();
         stage_assigned_paths(&repo, &["a.rs".into(), "b.rs".into()]).unwrap();
         assert!(verify_staged_paths(&repo, &["a.rs".into()]).is_err());
+    }
+
+    #[test]
+    fn verify_staged_fingerprints_untracked_passes() {
+        let repo = temp_repo("verify-staged-untracked");
+        std::fs::write(repo.join("new.rs"), "fn new(){}\n").unwrap();
+        let fp = compute_fingerprint(&repo, "new.rs", "untracked", &None).unwrap();
+        stage_assigned_paths(&repo, &["new.rs".into()]).unwrap();
+        assert!(verify_staged_fingerprints(
+            &repo,
+            &[crate::git::FileForFingerprint {
+                path: "new.rs".into(),
+                change_type: "untracked".into(),
+                original_path: None,
+            }],
+            &[Some(fp.to_stored())]
+        ).is_ok());
+    }
+
+    #[test]
+    fn verify_staged_fingerprints_modified_passes() {
+        let repo = temp_repo("verify-staged-modified");
+        std::fs::write(repo.join("a.rs"), "fn a(){}\n").unwrap();
+        commit_all(&repo, "init");
+        std::fs::write(repo.join("a.rs"), "fn a() { 1 }\n").unwrap();
+        let fp = compute_fingerprint(&repo, "a.rs", "modified", &None).unwrap();
+        stage_assigned_paths(&repo, &["a.rs".into()]).unwrap();
+        assert!(verify_staged_fingerprints(
+            &repo,
+            &[crate::git::FileForFingerprint {
+                path: "a.rs".into(),
+                change_type: "modified".into(),
+                original_path: None,
+            }],
+            &[Some(fp.to_stored())]
+        ).is_ok());
+    }
+
+    #[test]
+    fn verify_staged_fingerprints_deleted_passes() {
+        let repo = temp_repo("verify-staged-deleted");
+        std::fs::write(repo.join("a.rs"), "fn a(){}\n").unwrap();
+        commit_all(&repo, "init");
+        std::fs::remove_file(repo.join("a.rs")).unwrap();
+        let fp = compute_fingerprint(&repo, "a.rs", "deleted", &None).unwrap();
+        stage_assigned_paths(&repo, &["a.rs".into()]).unwrap();
+        assert!(verify_staged_fingerprints(
+            &repo,
+            &[crate::git::FileForFingerprint {
+                path: "a.rs".into(),
+                change_type: "deleted".into(),
+                original_path: None,
+            }],
+            &[Some(fp.to_stored())]
+        ).is_ok());
+    }
+
+    #[test]
+    fn verify_staged_fingerprints_renamed_passes() {
+        let repo = temp_repo("verify-staged-renamed");
+        std::fs::write(repo.join("a.rs"), "fn a(){}\n").unwrap();
+        commit_all(&repo, "init");
+        std::fs::rename(repo.join("a.rs"), repo.join("b.rs")).unwrap();
+        let fp = compute_fingerprint(&repo, "b.rs", "renamed", &Some("a.rs".into())).unwrap();
+        stage_assigned_paths(&repo, &["a.rs".into(), "b.rs".into()]).unwrap();
+        assert!(verify_staged_fingerprints(
+            &repo,
+            &[crate::git::FileForFingerprint {
+                path: "b.rs".into(),
+                change_type: "renamed".into(),
+                original_path: Some("a.rs".into()),
+            }],
+            &[Some(fp.to_stored())]
+        ).is_ok());
     }
 }

@@ -49,6 +49,8 @@ export default function App() {
   // Today / All Queues state
   const [todayItems, setTodayItems] = useState<QueueItem[]>([]);
   const [allScheduledItems, setAllScheduledItems] = useState<QueueItem[]>([]);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const pausedCount = allScheduledItems.filter((i) => i.status === "Paused").length;
 
   // Auto-dismiss transient notices after 6 seconds.
   useEffect(() => {
@@ -116,6 +118,13 @@ export default function App() {
     setRepoId(id);
     setView("repo");
   }, [repoId]);
+
+  const handleReviewPaused = useCallback(() => {
+    const firstPaused = allScheduledItems.find((i) => i.status === "Paused");
+    if (firstPaused) {
+      switchToRepo(firstPaused.queue_id);
+    }
+  }, [allScheduledItems, switchToRepo]);
 
   const addRepository = useCallback(async () => {
     setAddError(null);
@@ -200,6 +209,28 @@ export default function App() {
         onRemoveRepo={handleRemoveRepoInit}
       />
       <main className="flex min-w-0 flex-1 flex-col">
+        {pausedCount > 0 && !bannerDismissed && (
+          <div className="flex w-full items-center justify-between border-b border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-warn)_10%,transparent)] px-4 py-2.5 text-xs text-[var(--color-warn)]">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-[var(--color-warn)]" />
+              <div>
+                <span className="font-semibold">GitOutbox needs your attention. </span>
+                <span>{pausedCount} scheduled commit{pausedCount === 1 ? "" : "s"} require{pausedCount === 1 ? "s" : ""} recovery.</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="primary" onClick={handleReviewPaused}>
+                Review
+              </Button>
+              <button
+                onClick={() => setBannerDismissed(true)}
+                className="rounded-[var(--radius-control)] px-2 py-1 text-[var(--color-muted)] hover:text-[var(--color-text)] font-medium cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
         {addError && (
           <button
             onClick={() => setAddError(null)}

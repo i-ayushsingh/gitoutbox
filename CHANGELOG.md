@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.1.1 (2026-07-15)
+
+This patch release fixes two production issues discovered during the first real-world overnight execution.
+
+### Bug Fixes
+
+- **Fingerprint Verification**: Fixed a variant comparison issue where untracked files successfully staging turned into `Modified` variants, causing staged fingerprint validation to fail.
+- **Paused Recovery Workflow**: Added a complete recovery system for paused scheduled items, allowing users to Retry, Reschedule, Return to Draft, or Delete paused items individually or in bulk.
+- **Startup Attention Banner**: Added a top-level startup banner reminding the user if there are paused items requiring their review.
+
 ---
 
 ## v0.1.0 (2026-07-15)

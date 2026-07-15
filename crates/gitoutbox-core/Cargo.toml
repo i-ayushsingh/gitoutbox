@@ -1,6 +1,6 @@
 [package]
 name = "gitoutbox-core"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Pure-std Git/scheduler/safety logic for GitOutbox. No native dependencies."
 

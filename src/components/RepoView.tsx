@@ -75,6 +75,13 @@ export function RepoView({
   useEffect(loadStatus, [loadStatus]);
   useEffect(loadAssignedFiles, [loadAssignedFiles]);
 
+  useEffect(() => {
+    const hasPaused = queueItems.some((i) => i.status === "Paused");
+    if (hasPaused) {
+      setTab("drafts");
+    }
+  }, [queueItems]);
+
   const branch = status?.current_branch ?? null;
   const changes = status?.changes ?? [];
 
@@ -235,6 +242,8 @@ export function RepoView({
         ) : (
           <DraftsView
             items={queueItems}
+            repoPath={repo.path}
+            onQueueChanged={onQueueChanged}
             onEdit={(item) => setEditDraft(item)}
             onRemove={async (id) => {
               await api.removeQueueItem(id);

@@ -27,7 +27,7 @@ Note that GitOutbox operates purely locally on your machine. It does not:
 If you discover a security vulnerability in GitOutbox, please **do not** open a public issue. Instead, report it privately to the maintainers:
 
 * **Email**: We will update this in some time.
-* **GPG Key**: We will update this in some time
+* **GPG Key**: We will update this in some time.
 
 We will acknowledge receipt of your report within **48 hours** and provide a follow-up detailing the expected resolution timeline.
 

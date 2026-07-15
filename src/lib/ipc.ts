@@ -50,6 +50,7 @@ export interface QueueItem {
   status: string;
   scheduled_time: number | null;
   commit_hash: string | null;
+  last_error: string | null;
   files: QueueItemFile[];
   updated_at: number;
 }
@@ -195,6 +196,9 @@ export const api = {
 
   rescheduleItem: (item_id: number, new_time: number) =>
     invoke<void>("reschedule_item", { item_id, new_time }),
+
+  retryPausedItems: (item_ids: number[], repository_path: string) =>
+    invoke<void>("retry_paused_items", { item_ids, repository_path }),
 
   captureFingerprints: (item_id: number, repository_path: string) =>
     invoke<void>("capture_fingerprints", { item_id, repository_path }),

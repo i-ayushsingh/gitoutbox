@@ -187,6 +187,7 @@ pub struct QueueItemDto {
     pub status: String,
     pub scheduled_time: Option<i64>,
     pub commit_hash: Option<String>,
+    pub last_error: Option<String>,
     pub files: Vec<QueueItemFileDto>,
     pub updated_at: i64,
 }
@@ -226,6 +227,7 @@ fn item_to_dto(i: crate::db::QueueItem) -> QueueItemDto {
         status: i.status,
         scheduled_time: i.scheduled_time,
         commit_hash: i.commit_hash,
+        last_error: i.last_error,
         files: i.files.into_iter().map(item_file_to_dto).collect(),
         updated_at: i.updated_at,
     }
@@ -576,5 +578,18 @@ pub async fn compute_schedule(input: GenerateScheduleInput) -> Result<Vec<Schedu
 #[tauri::command(rename_all = "snake_case")]
 pub async fn count_scheduled_items(db: State<'_, Db>, repository_id: i64) -> Result<i64, String> {
     db.count_scheduled_items(repository_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn retry_paused_items(
+    db: State<'_, Db>,
+    locks: State<'_, crate::ExecutionLocks>,
+    item_ids: Vec<i64>,
+    repository_path: String,
+) -> Result<(), String> {
+    for id in item_ids {
+        let _ = crate::execution::execute_item(&db, &locks, id, &repository_path);
+    }
+    Ok(())
 }
 

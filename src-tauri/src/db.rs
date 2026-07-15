@@ -40,6 +40,7 @@ pub struct QueueItem {
     pub status: String,
     pub scheduled_time: Option<i64>,
     pub commit_hash: Option<String>,
+    pub last_error: Option<String>,
     pub files: Vec<QueueItemFile>,
     pub updated_at: i64,
 }
@@ -391,11 +392,11 @@ impl Db {
     /// Get a single queue item with its files.
     pub fn get_queue_item(&self, id: i64) -> rusqlite::Result<QueueItem> {
         let conn = self.0.lock().unwrap();
-        let (qi_id, queue_id, title, msg, branch, mode, status, scheduled_time, commit_hash, updated_at) = conn.query_row(
-            "SELECT id, queue_id, title, commit_message, target_branch, execution_mode, status, scheduled_time, commit_hash, updated_at
+        let (qi_id, queue_id, title, msg, branch, mode, status, scheduled_time, commit_hash, updated_at, last_error) = conn.query_row(
+            "SELECT id, queue_id, title, commit_message, target_branch, execution_mode, status, scheduled_time, commit_hash, updated_at, last_error
              FROM queue_items WHERE id = ?1",
             [id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?)),
         )?;
         let mut fstmt = conn.prepare(
             "SELECT path, original_path, change_type FROM queue_item_files WHERE queue_item_id = ?1",
@@ -417,6 +418,7 @@ impl Db {
             status,
             scheduled_time,
             commit_hash,
+            last_error,
             files: files.collect::<rusqlite::Result<Vec<_>>>()?,
             updated_at,
         })
@@ -447,7 +449,7 @@ impl Db {
         let mut items = Vec::new();
         let mut stmt = conn.prepare(
             "SELECT qi.id, qi.queue_id, qi.title, qi.commit_message, qi.target_branch,
-                    qi.execution_mode, qi.status, qi.scheduled_time, qi.commit_hash, qi.updated_at
+                    qi.execution_mode, qi.status, qi.scheduled_time, qi.commit_hash, qi.updated_at, qi.last_error
              FROM queue_items qi
              JOIN queues q ON q.id = qi.queue_id
              WHERE q.repository_id = ?1
@@ -465,10 +467,11 @@ impl Db {
                 r.get::<_, Option<i64>>(7)?,
                 r.get::<_, Option<String>>(8)?,
                 r.get::<_, i64>(9)?,
+                r.get::<_, Option<String>>(10)?,
             ))
         })?;
         for row in rows {
-            let (id, queue_id, title, msg, branch, mode, status, scheduled_time, commit_hash, updated_at) = row?;
+            let (id, queue_id, title, msg, branch, mode, status, scheduled_time, commit_hash, updated_at, last_error) = row?;
             let mut fstmt = conn.prepare(
                 "SELECT path, original_path, change_type FROM queue_item_files WHERE queue_item_id = ?1",
             )?;
@@ -489,6 +492,7 @@ impl Db {
                 status,
                 scheduled_time,
                 commit_hash,
+                last_error,
                 files: files.collect::<rusqlite::Result<Vec<_>>>()?,
                 updated_at,
             });
@@ -1028,10 +1032,10 @@ impl Db {
                 [item_id],
                 |r| r.get(0),
             )?;
-            if status != "Scheduled" {
+            if status != "Scheduled" && status != "Paused" {
                 return Err(rusqlite::Error::SqliteFailure(
                     rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT),
-                    Some(format!("Item {item_id} is not Scheduled (status: {status})")),
+                    Some(format!("Item {item_id} is not Scheduled or Paused (status: {status})")),
                 ));
             }
         }
@@ -1039,9 +1043,9 @@ impl Db {
         let tx = conn.transaction()?;
         let now = now_secs();
         for &item_id in item_ids {
-            // Clear scheduled_time and status.
+            // Clear scheduled_time, status, and execution state.
             tx.execute(
-                "UPDATE queue_items SET status = 'Draft', scheduled_time = NULL, updated_at = ?1 WHERE id = ?2",
+                "UPDATE queue_items SET status = 'Draft', scheduled_time = NULL, retry_count = 0, last_error = NULL, commit_hash = NULL, updated_at = ?1 WHERE id = ?2",
                 (now, item_id),
             )?;
             // Clear fingerprints (draft becomes editable again).
@@ -1077,7 +1081,69 @@ impl Db {
         to_time: Option<i64>,
     ) -> rusqlite::Result<Vec<QueueItem>> {
         let conn = self.0.lock().unwrap();
-        self.list_items_with_filter(&conn, None, Some("Scheduled"), from_time.zip(to_time))
+        let mut sql = String::from(
+            "SELECT qi.id, qi.queue_id, qi.title, qi.commit_message, qi.target_branch,
+                    qi.execution_mode, qi.status, qi.scheduled_time, qi.commit_hash, qi.updated_at, qi.last_error
+             FROM queue_items qi
+             JOIN queues q ON q.id = qi.queue_id
+             WHERE qi.status IN ('Scheduled', 'Paused', 'Running', 'PushPending')"
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        let param_idx = 1;
+        if let Some((from, to)) = from_time.zip(to_time) {
+            sql.push_str(&format!(" AND qi.scheduled_time >= ?{param_idx} AND qi.scheduled_time < ?{}", param_idx + 1));
+            params.push(Box::new(from));
+            params.push(Box::new(to));
+        }
+        sql.push_str(" ORDER BY qi.scheduled_time ASC, qi.id ASC");
+
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(param_refs.as_slice(), |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, String>(5)?,
+                r.get::<_, String>(6)?,
+                r.get::<_, Option<i64>>(7)?,
+                r.get::<_, Option<String>>(8)?,
+                r.get::<_, i64>(9)?,
+                r.get::<_, Option<String>>(10)?,
+            ))
+        })?;
+
+        let mut items = Vec::new();
+        for row in rows {
+            let (id, queue_id, title, msg, branch, mode, status, scheduled_time, commit_hash, updated_at, last_error) = row?;
+            let mut fstmt = conn.prepare(
+                "SELECT path, original_path, change_type FROM queue_item_files WHERE queue_item_id = ?1",
+            )?;
+            let files = fstmt.query_map([id], |r| {
+                Ok(QueueItemFile {
+                    path: r.get(0)?,
+                    original_path: r.get(1)?,
+                    change_type: r.get(2)?,
+                })
+            })?;
+            items.push(QueueItem {
+                id,
+                queue_id,
+                title,
+                commit_message: msg,
+                target_branch: branch,
+                execution_mode: mode,
+                status,
+                scheduled_time,
+                commit_hash,
+                last_error,
+                files: files.collect::<rusqlite::Result<Vec<_>>>()?,
+                updated_at,
+            });
+        }
+        Ok(items)
     }
 
     // --- Phase 4: execution state machine + activity log ---
@@ -1234,14 +1300,14 @@ impl Db {
             [item_id],
             |r| r.get(0),
         )?;
-        if status != "Scheduled" {
+        if status != "Scheduled" && status != "Paused" {
             return Err(rusqlite::Error::SqliteFailure(
                 rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT),
-                Some(format!("Item {item_id} is not Scheduled (status: {status})")),
+                Some(format!("Item {item_id} is not Scheduled or Paused (status: {status})")),
             ));
         }
         conn.execute(
-            "UPDATE queue_items SET scheduled_time = ?1, updated_at = ?2 WHERE id = ?3",
+            "UPDATE queue_items SET status = 'Scheduled', scheduled_time = ?1, retry_count = 0, last_error = NULL, commit_hash = NULL, updated_at = ?2 WHERE id = ?3",
             (new_time, now_secs(), item_id),
         )?;
         Ok(())
@@ -1634,7 +1700,7 @@ impl Db {
     ) -> rusqlite::Result<Vec<QueueItem>> {
         let mut sql = String::from(
             "SELECT qi.id, qi.queue_id, qi.title, qi.commit_message, qi.target_branch,
-                    qi.execution_mode, qi.status, qi.scheduled_time, qi.commit_hash, qi.updated_at
+                    qi.execution_mode, qi.status, qi.scheduled_time, qi.commit_hash, qi.updated_at, qi.last_error
              FROM queue_items qi
              JOIN queues q ON q.id = qi.queue_id WHERE 1=1"
         );
@@ -1673,12 +1739,13 @@ impl Db {
                 r.get::<_, Option<i64>>(7)?,
                 r.get::<_, Option<String>>(8)?,
                 r.get::<_, i64>(9)?,
+                r.get::<_, Option<String>>(10)?,
             ))
         })?;
 
         let mut items = Vec::new();
         for row in rows {
-            let (id, queue_id, title, msg, branch, mode, status, scheduled_time, commit_hash, updated_at) = row?;
+            let (id, queue_id, title, msg, branch, mode, status, scheduled_time, commit_hash, updated_at, last_error) = row?;
             let mut fstmt = conn.prepare(
                 "SELECT path, original_path, change_type FROM queue_item_files WHERE queue_item_id = ?1",
             )?;
@@ -1699,6 +1766,7 @@ impl Db {
                 status,
                 scheduled_time,
                 commit_hash,
+                last_error,
                 files: files.collect::<rusqlite::Result<Vec<_>>>()?,
                 updated_at,
             });
