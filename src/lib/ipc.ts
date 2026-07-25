@@ -16,8 +16,10 @@ export interface Change {
 export interface GitCheck {
   installed: boolean;
   version: string | null;
+  git_path: string | null;
   user_name: string | null;
   user_email: string | null;
+  default_branch: string | null;
 }
 
 export interface RepoStatus {
@@ -234,4 +236,11 @@ export const api = {
   }) => invoke<{ item_index: number; scheduled_time: number }[]>("compute_schedule", { input }),
 
   countScheduledItems: (repository_id: number) => invoke<number>("count_scheduled_items", { repository_id }),
+
+  getSchedulerPaused: () => invoke<boolean>("get_scheduler_paused"),
+
+  setSchedulerPaused: (paused: boolean) => invoke<boolean>("set_scheduler_paused", { paused }),
+
+  openAppDataDir: () => invoke<void>("open_app_data_dir"),
 };
+

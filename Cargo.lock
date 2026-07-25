@@ -1303,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "gitoutbox"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "gitoutbox-core",
  "rusqlite",
@@ -1318,7 +1318,7 @@ dependencies = [
 
 [[package]]
 name = "gitoutbox-core"
-version = "0.1.1"
+version = "0.2.0"
 
 [[package]]
 name = "glib"

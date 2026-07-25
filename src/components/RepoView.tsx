@@ -352,18 +352,18 @@ function TabBar({
     { id: "drafts", label: `Drafts${draftCount ? ` (${draftCount})` : ""}`, icon: Layers },
   ];
   return (
-    <div className="flex shrink-0 items-center gap-1 border-b border-[var(--color-border)] px-3 py-1.5">
+    <div className="flex shrink-0 items-center gap-1 border-b border-[var(--color-border)] px-3 py-1.5 bg-[var(--color-surface)] select-none">
       {tabs.map(({ id, label, icon: Icon }) => (
         <button
           key={id}
           onClick={() => setTab(id)}
-          className={`flex items-center gap-1.5 rounded-[var(--radius-control)] px-2.5 py-1 text-xs transition-colors duration-150 ${
+          className={`flex items-center gap-1.5 rounded-[var(--radius-control)] px-3 py-1.5 text-xs font-semibold transition-all duration-150 cursor-pointer ${
             tab === id
-              ? "bg-[var(--color-surface-2)] text-[var(--color-text)]"
-              : "text-[var(--color-muted)] hover:text-[var(--color-text)]"
+              ? "bg-[var(--color-surface-2)] text-[var(--color-text)] border border-[var(--color-border-strong)] shadow-sm"
+              : "text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)]"
           }`}
         >
-          <Icon className="h-3.5 w-3.5" />
+          <Icon className={`h-3.5 w-3.5 ${tab === id ? "text-[var(--color-accent)]" : ""}`} />
           {label}
         </button>
       ))}
@@ -383,24 +383,33 @@ function SelectionPanel({
   onClear: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 p-4">
-      <div className="text-sm font-medium">{count} selected</div>
-      <Button variant="primary" onClick={onGroupIntoOne}>
-        <Plus className="h-3.5 w-3.5" /> Group into one draft
-      </Button>
-      <Button variant="default" onClick={onBatchOnePerFile}>
-        <Plus className="h-3.5 w-3.5" /> One draft per file ({count})
-      </Button>
-      <button
-        onClick={onClear}
-        className="self-start text-[11px] text-[var(--color-faint)] hover:text-[var(--color-text)]"
-      >
-        Clear selection
-      </button>
-      <p className="text-[11px] leading-relaxed text-[var(--color-faint)]">
-        Each draft becomes one scheduled commit. Scheduling arrives in the next
-        phase — for now drafts are saved as durable drafts.
-      </p>
+    <div className="flex flex-col gap-4 p-5 animate-fadeIn select-none">
+      <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
+        <div>
+          <div className="text-sm font-bold text-[var(--color-text)]">{count} {count === 1 ? "file" : "files"} selected</div>
+          <div className="text-[11px] text-[var(--color-muted)]">Ready for draft commit creation</div>
+        </div>
+        <button
+          onClick={onClear}
+          className="text-xs text-[var(--color-muted)] hover:text-[var(--color-text)] underline cursor-pointer"
+        >
+          Clear
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Button variant="primary" onClick={onGroupIntoOne} className="w-full justify-center py-2 font-semibold">
+          <Plus className="h-4 w-4" /> Group into single draft
+        </Button>
+        <Button variant="default" onClick={onBatchOnePerFile} className="w-full justify-center py-2">
+          <Plus className="h-4 w-4 text-[var(--color-accent)]" /> One draft per file ({count})
+        </Button>
+      </div>
+
+      <div className="rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-[11px] leading-relaxed text-[var(--color-muted)]">
+        <p className="font-semibold text-[var(--color-text)] mb-1">How draft commits work:</p>
+        <p>Created drafts stage assigned files only. No files are committed to Git history until scheduled or executed.</p>
+      </div>
     </div>
   );
 }
@@ -410,8 +419,8 @@ function InspectorHelp({ draftCount }: { draftCount: number }) {
     return (
       <EmptyState
         icon={Layers}
-        title={`${draftCount} draft commit${draftCount === 1 ? "" : "s"}`}
-        hint="Open the Drafts tab to review, edit, or remove them. Select files in Changes to add more."
+        title={`${draftCount} draft commit${draftCount === 1 ? "" : "s"} ready`}
+        hint="Switch to the Drafts tab above to review, schedule, or edit your commit queue."
       />
     );
   }
@@ -419,7 +428,8 @@ function InspectorHelp({ draftCount }: { draftCount: number }) {
     <EmptyState
       icon={GitCommitHorizontal}
       title="Select files to draft"
-      hint="Check changes on the left, then create one draft per file or group them together."
+      hint="Check changes on the left to group files into a single commit draft or create separate commits."
     />
   );
 }
+

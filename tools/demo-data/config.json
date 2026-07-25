@@ -1,0 +1,38 @@
+{
+  "active_preset": "medium",
+  "presets": {
+    "small": {
+      "repositories": { "min": 3, "max": 5 },
+      "drafts": { "min": 18, "max": 25 },
+      "activities": { "min": 25, "max": 40 }
+    },
+    "medium": {
+      "repositories": { "min": 6, "max": 9 },
+      "drafts": { "min": 80, "max": 120 },
+      "activities": { "min": 100, "max": 200 }
+    },
+    "large": {
+      "repositories": { "min": 10, "max": 15 },
+      "drafts": { "min": 850, "max": 1150 },
+      "activities": { "min": 1000, "max": 1500 }
+    }
+  },
+  "status_distribution": {
+    "Pending": 0.25,
+    "Scheduled": 0.35,
+    "Executing": 0.05,
+    "Completed": 0.25,
+    "Failed": 0.07,
+    "Skipped": 0.03
+  },
+  "branches": [
+    "main",
+    "master",
+    "develop",
+    "feature/auth-v2",
+    "feature/scheduler-ui",
+    "fix/tray-icon",
+    "refactor/git-core"
+  ],
+  "execution_modes": ["commit_only", "commit_and_push", "push_at_end"]
+}

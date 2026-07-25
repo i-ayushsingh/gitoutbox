@@ -149,7 +149,7 @@ export function ChangesView({
         </span>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-20">
         {loading && !status && (
           <div className="flex h-full items-center justify-center gap-2 text-xs text-[var(--color-muted)]">
             <Loader2 className="h-4 w-4 animate-spin" /> Inspecting repository…

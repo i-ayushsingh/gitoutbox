@@ -3,10 +3,13 @@
 
 use serde::Serialize;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::State;
 
 use crate::db::{Db, Repository};
 use gitoutbox_core as core;
+
+pub static SCHEDULER_PAUSED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Serialize)]
 pub struct GitCheck {
@@ -327,6 +330,24 @@ pub async fn remove_queue_item(db: State<'_, Db>, id: i64) -> Result<(), String>
     db.remove_queue_item(id).map_err(|e| e.to_string())
 }
 
+#[tauri::command(rename_all = "snake_case")]
+pub async fn open_app_data_dir(app_handle: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Explorer is only supported on Windows".to_string())
+    }
+}
+
 /// Open a directory in Windows Explorer. Uses argument array (no shell
 /// concatenation). Paths with spaces and Unicode work correctly.
 #[tauri::command]
@@ -591,5 +612,16 @@ pub async fn retry_paused_items(
         let _ = crate::execution::execute_item(&db, &locks, id, &repository_path);
     }
     Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn get_scheduler_paused() -> Result<bool, String> {
+    Ok(SCHEDULER_PAUSED.load(Ordering::Relaxed))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn set_scheduler_paused(paused: bool) -> Result<bool, String> {
+    SCHEDULER_PAUSED.store(paused, Ordering::Relaxed);
+    Ok(paused)
 }
 

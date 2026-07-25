@@ -1,6 +1,6 @@
 [package]
 name = "gitoutbox"
-version = "0.1.1"
+version = "0.2.0"
 description = "GitOutbox — prepare work now, ship it on your schedule."
 authors = ["GitOutbox"]
 edition = "2021"

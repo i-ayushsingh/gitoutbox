@@ -342,11 +342,12 @@ pub fn run() {
             };
             handle_missed_schedules(&db, Some(&notifier));
 
-            // System tray icon setup
-            let show_i = MenuItemBuilder::with_id("show", "Show GitOutbox").build(app)?;
+            // System tray icon setup with Open, Pause/Resume, Quit
+            let open_i = MenuItemBuilder::with_id("open", "Open GitOutbox").build(app)?;
+            let pause_i = MenuItemBuilder::with_id("pause", "Pause Scheduler").build(app)?;
             let quit_i = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             let menu = MenuBuilder::new(app)
-                .items(&[&show_i, &quit_i])
+                .items(&[&open_i, &pause_i, &quit_i])
                 .build()?;
 
             let _tray = TrayIconBuilder::new()
@@ -372,12 +373,24 @@ pub fn run() {
                 .build(app)?;
 
             app.on_menu_event(move |app, event| match event.id().as_ref() {
-                "show" => {
+                "open" | "show" => {
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.unminimize();
                         let _ = window.show();
                         let _ = window.set_focus();
                     }
+                }
+                "pause" => {
+                    use std::sync::atomic::Ordering;
+                    let current = commands::SCHEDULER_PAUSED.load(Ordering::Relaxed);
+                    let new_state = !current;
+                    commands::SCHEDULER_PAUSED.store(new_state, Ordering::Relaxed);
+                    let _ = pause_i.set_text(if new_state { "Resume Scheduler" } else { "Pause Scheduler" });
+                    let _ = app.notification()
+                        .builder()
+                        .title(if new_state { "Scheduler Paused" } else { "Scheduler Resumed" })
+                        .body(if new_state { "Automated commit execution is paused." } else { "Automated commit execution resumed." })
+                        .show();
                 }
                 "quit" => {
                     let db = app.state::<Db>();
@@ -417,7 +430,7 @@ pub fn run() {
             app.manage(db);
             app.manage(locks);
 
-            // Spawn the scheduler loop
+            // Spawn the background scheduler loop (skips tick if paused)
             let app_handle_clone2 = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 let loop_notifier = move |title: &str, body: &str| {
@@ -429,7 +442,9 @@ pub fn run() {
                 };
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    tick_scheduler(&db_clone, &locks_clone, Some(&loop_notifier));
+                    if !commands::SCHEDULER_PAUSED.load(std::sync::atomic::Ordering::Relaxed) {
+                        tick_scheduler(&db_clone, &locks_clone, Some(&loop_notifier));
+                    }
                 }
             });
 
@@ -481,7 +496,11 @@ pub fn run() {
             commands::compute_schedule,
             commands::count_scheduled_items,
             commands::retry_paused_items,
+            commands::get_scheduler_paused,
+            commands::set_scheduler_paused,
+            commands::open_app_data_dir,
         ])
+
         .run(tauri::generate_context!())
         .expect("error while running GitOutbox");
 }

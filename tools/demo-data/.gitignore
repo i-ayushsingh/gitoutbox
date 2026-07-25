@@ -1,0 +1,5 @@
+# Demo Data Generator Artifacts
+__pycache__/
+*.pyc
+*.db
+*.sql

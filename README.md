@@ -108,6 +108,9 @@ To install GitOutbox on Windows:
 2. Run the setup wizard to install GitOutbox to your system.
 3. Launch the application from your desktop or Start Menu.
 
+> **Note on Windows SmartScreen**: As an unsigned open-source application, Windows SmartScreen may show a *"Windows protected your PC"* message on first launch. Click **"More info"** and then **"Run anyway"**. See the [Windows SmartScreen Guide](docs/SMARTSCREEN_GUIDE.md) for step-by-step instructions.
+
+
 ---
 
 ## 8. Building from Source

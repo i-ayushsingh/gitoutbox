@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   Info,
   FileText,
+  Plus,
 } from "lucide-react";
 import { api, type Repository, type QueueItem, type Template } from "../lib/ipc";
 import { switchRepo } from "../lib/selection";
@@ -16,10 +17,12 @@ import { LeftRail, type GlobalView } from "../components/LeftRail";
 import { GitCheckScreen } from "../components/GitCheckScreen";
 import { RepoView } from "../components/RepoView";
 import { SettingsView } from "../components/SettingsView";
+import { TemplatesView } from "../components/TemplatesView";
 import { ActivityView } from "../components/ActivityView";
 import { EmptyState, Button } from "../components/ui";
 
 const ONBOARDED_KEY = "gitoutbox.onboarded";
+const LAST_VIEW_KEY = "gitoutbox.last_view";
 
 type View = GlobalView | "repo";
 
@@ -31,13 +34,27 @@ function getTodayRange(): { from: number; to: number } {
   return { from: Math.floor(start.getTime() / 1000), to: Math.floor(end.getTime() / 1000) };
 }
 
+function getInitialView(): { view: View; repoId: number | null } {
+  try {
+    const raw = localStorage.getItem(LAST_VIEW_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.view) {
+        return { view: parsed.view as View, repoId: typeof parsed.repoId === "number" ? parsed.repoId : null };
+      }
+    }
+  } catch {}
+  return { view: "today", repoId: null };
+}
+
 export default function App() {
   const [onboarded, setOnboarded] = useState(
     () => localStorage.getItem(ONBOARDED_KEY) === "1"
   );
+  const initial = getInitialView();
   const [repositories, setRepositories] = useState<Repository[]>([]);
-  const [view, setView] = useState<View>("today");
-  const [repoId, setRepoId] = useState<number | null>(null);
+  const [view, setView] = useState<View>(initial.view);
+  const [repoId, setRepoId] = useState<number | null>(initial.repoId);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -51,6 +68,13 @@ export default function App() {
   const [allScheduledItems, setAllScheduledItems] = useState<QueueItem[]>([]);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const pausedCount = allScheduledItems.filter((i) => i.status === "Paused").length;
+
+  // Persist last opened page / view
+  useEffect(() => {
+    if (onboarded) {
+      localStorage.setItem(LAST_VIEW_KEY, JSON.stringify({ view, repoId }));
+    }
+  }, [onboarded, view, repoId]);
 
   // Auto-dismiss transient notices after 6 seconds.
   useEffect(() => {
@@ -79,9 +103,16 @@ export default function App() {
   const refreshRepos = useCallback(() => {
     api
       .listRepositories()
-      .then(setRepositories)
+      .then((repos) => {
+        setRepositories(repos);
+        // If restoring a repo view but repoId no longer exists, fall back to "today"
+        if (repoId != null && !repos.some((r) => r.id === repoId)) {
+          setRepoId(null);
+          setView("today");
+        }
+      })
       .catch(() => setRepositories([]));
-  }, []);
+  }, [repoId]);
 
   const refreshTemplates = useCallback(() => {
     api.listTemplates().then(setTemplates).catch(() => setTemplates([]));
@@ -111,6 +142,12 @@ export default function App() {
   const completeOnboarding = () => {
     localStorage.setItem(ONBOARDED_KEY, "1");
     setOnboarded(true);
+    refreshRepos();
+  };
+
+  const handleReplayOnboarding = () => {
+    localStorage.removeItem(ONBOARDED_KEY);
+    setOnboarded(false);
   };
 
   const switchToRepo = useCallback((id: number) => {
@@ -260,7 +297,9 @@ export default function App() {
               templates={templates}
             />
           ) : view === "settings" ? (
-            <SettingsView
+            <SettingsView onReplayOnboarding={handleReplayOnboarding} />
+          ) : view === "templates" ? (
+            <TemplatesView
               templates={templates}
               onRefresh={refreshTemplates}
               onCreate={async (name, template) => { await api.createTemplate(name, template); }}
@@ -269,9 +308,9 @@ export default function App() {
               onDelete={async (name) => { await api.deleteTemplate(name); }}
             />
           ) : view === "today" ? (
-            <TodayView items={todayItems} repositories={repositories} />
+            <TodayView items={todayItems} repositories={repositories} onAddRepo={addRepository} />
           ) : view === "queues" ? (
-            <AllQueuesView items={allScheduledItems} repositories={repositories} />
+            <AllQueuesView items={allScheduledItems} repositories={repositories} onAddRepo={addRepository} />
           ) : view === "activity" ? (
             <ActivityView />
           ) : (
@@ -317,7 +356,37 @@ export default function App() {
   );
 }
 
-function TodayView({ items, repositories }: { items: QueueItem[]; repositories: Repository[] }) {
+function NoReposEmptyState({ onAddRepo }: { onAddRepo: () => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center p-8 text-center select-none">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-accent)] mb-4 shadow-sm">
+        <FolderGit2 className="h-8 w-8" strokeWidth={1.5} />
+      </div>
+      <h2 className="text-lg font-semibold text-[var(--color-text)] mb-2">No repositories yet</h2>
+      <p className="max-w-md text-xs text-[var(--color-muted)] leading-relaxed mb-6">
+        GitOutbox works with any local Git repository.<br />
+        Add your first repository to begin creating draft commits and scheduling them.
+      </p>
+      <Button variant="primary" onClick={onAddRepo} className="px-6 py-2 text-xs font-medium">
+        <Plus className="mr-1.5 h-4 w-4" /> Add Repository
+      </Button>
+    </div>
+  );
+}
+
+function TodayView({
+  items,
+  repositories,
+  onAddRepo,
+}: {
+  items: QueueItem[];
+  repositories: Repository[];
+  onAddRepo: () => void;
+}) {
+  if (repositories.length === 0) {
+    return <NoReposEmptyState onAddRepo={onAddRepo} />;
+  }
+
   if (items.length === 0) {
     return (
       <EmptyState
@@ -347,7 +416,7 @@ function TodayView({ items, repositories }: { items: QueueItem[]; repositories: 
           {items.length} scheduled
         </span>
       </header>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pb-20">
         {[...grouped.entries()].map(([time, timeItems]) => (
           <div key={time}>
             <div className="sticky top-0 border-b border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-1.5 font-[family-name:var(--font-mono)] text-[11px] text-[var(--color-muted)]">
@@ -382,7 +451,19 @@ function TodayView({ items, repositories }: { items: QueueItem[]; repositories: 
   );
 }
 
-function AllQueuesView({ items, repositories }: { items: QueueItem[]; repositories: Repository[] }) {
+function AllQueuesView({
+  items,
+  repositories,
+  onAddRepo,
+}: {
+  items: QueueItem[];
+  repositories: Repository[];
+  onAddRepo: () => void;
+}) {
+  if (repositories.length === 0) {
+    return <NoReposEmptyState onAddRepo={onAddRepo} />;
+  }
+
   if (items.length === 0) {
     return (
       <EmptyState
@@ -412,7 +493,7 @@ function AllQueuesView({ items, repositories }: { items: QueueItem[]; repositori
           {items.length} scheduled
         </span>
       </header>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pb-20">
         {[...grouped.entries()].map(([date, dateItems]) => (
           <div key={date}>
             <div className="sticky top-0 border-b border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-1.5 text-[11px] font-medium text-[var(--color-muted)]">
@@ -462,26 +543,10 @@ function Placeholder({
   onAddRepo: () => void;
   hasRepos: boolean;
 }) {
-  if (view === "today") {
-    return hasRepos ? (
-      <EmptyState
-        icon={CalendarClock}
-        title="Nothing scheduled today"
-        hint="Select a repository, create draft commits, and schedule them."
-      />
-    ) : (
-      <EmptyState
-        icon={FolderGit2}
-        title="Add a repository to get started"
-        hint="GitOutbox inspects a local Git repository and shows every change so you can prepare commits now and ship them on your schedule."
-        action={
-          <Button variant="primary" onClick={onAddRepo}>
-            Add repository
-          </Button>
-        }
-      />
-    );
+  if (!hasRepos && view !== "settings") {
+    return <NoReposEmptyState onAddRepo={onAddRepo} />;
   }
+
   const map = {
     queues: { icon: ListChecks, title: "No queues yet", hint: "Scheduled commit queues will appear here." },
     activity: { icon: ScrollText, title: "No activity yet", hint: "Every scheduled operation will be logged here." },

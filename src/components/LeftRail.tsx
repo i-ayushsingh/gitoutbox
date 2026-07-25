@@ -10,15 +10,19 @@ import {
   RefreshCw,
   FolderOpen,
   Trash2,
+  FileText,
+  Copy,
+  Check,
 } from "lucide-react";
 import type { Repository } from "../lib/ipc";
 import { brand } from "../lib/brand";
 
-export type GlobalView = "today" | "queues" | "activity" | "settings";
+export type GlobalView = "today" | "queues" | "templates" | "activity" | "settings";
 
 const NAV: { id: GlobalView; label: string; icon: typeof CalendarClock }[] = [
   { id: "today", label: "Today", icon: CalendarClock },
   { id: "queues", label: "All Queues", icon: ListChecks },
+  { id: "templates", label: "Templates", icon: FileText },
   { id: "activity", label: "Activity", icon: ScrollText },
 ];
 
@@ -44,6 +48,7 @@ export function LeftRail({
   repositories: Repository[];
 }) {
   const [contextMenu, setContextMenu] = useState<{ repoId: number; repoName: string; repoPath: string; x: number; y: number } | null>(null);
+  const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,12 +67,29 @@ export function LeftRail({
     setContextMenu({ repoId: repo.id, repoName: repo.name, repoPath: repo.path, x: e.clientX, y: e.clientY });
   };
 
+  const copyPath = (path: string) => {
+    navigator.clipboard.writeText(path);
+    setCopied(true);
+    setTimeout(() => {
+      setCopied(false);
+      setContextMenu(null);
+    }, 800);
+  };
+
   return (
-    <nav className="flex w-56 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]">
-      <div className="flex items-center px-4 py-3">
-        <img src={brand.horizontalLogo} className="h-6 object-contain" alt="GitOutbox" />
+    <nav className="flex w-56 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] select-none">
+      {/* App Header */}
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[var(--color-border)] mb-2">
+        <img src={brand.appIcon} className="h-5 w-5 object-contain" alt="GitOutbox Icon" />
+        <span className="text-xs font-bold tracking-wide text-[var(--color-text)] font-[family-name:var(--font-mono)]">
+          GitOutbox
+        </span>
+        <span className="ml-auto rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--color-faint)]">
+          v0.2.0
+        </span>
       </div>
 
+      {/* Primary Global Navigation */}
       <div className="flex flex-col gap-0.5 px-2">
         {NAV.map(({ id, label, icon: Icon }) => (
           <RailItem
@@ -80,13 +102,24 @@ export function LeftRail({
         ))}
       </div>
 
-      <div className="mt-5 px-4 pb-1 text-[10px] font-medium uppercase tracking-wider text-[var(--color-faint)]">
-        Repositories
+      {/* Repositories Section */}
+      <div className="mt-5 flex items-center justify-between px-4 pb-1.5">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-faint)]">
+          Repositories
+        </span>
+        <button
+          onClick={onAddRepo}
+          className="rounded p-0.5 text-[var(--color-faint)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+          title="Add repository"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
       </div>
+
       <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2">
         {repositories.length === 0 && (
-          <div className="px-3 py-1.5 text-xs text-[var(--color-faint)]">
-            None added yet
+          <div className="px-3 py-3 text-center text-xs text-[var(--color-faint)] italic">
+            No repositories added
           </div>
         )}
         {repositories.map((r) => (
@@ -95,6 +128,7 @@ export function LeftRail({
               active={view === "repo" && repoId === r.id}
               icon={<FolderGit2 className="h-4 w-4" strokeWidth={1.75} />}
               label={r.name}
+              title={r.path}
               onClick={() => onSelectRepo(r.id)}
               onContextMenu={(e) => handleContextMenu(e, r)}
             />
@@ -104,19 +138,20 @@ export function LeftRail({
                 const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                 setContextMenu({ repoId: r.id, repoName: r.name, repoPath: r.path, x: rect.right, y: rect.top });
               }}
-              className="absolute right-1 rounded p-0.5 opacity-0 group-hover:opacity-100 text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] transition-opacity"
-              title="Repository actions"
+              className="absolute right-1.5 rounded p-1 opacity-0 group-hover:opacity-100 text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] transition-all cursor-pointer"
+              title="Repository options"
             >
-              <MoreVertical className="h-3 w-3" />
+              <MoreVertical className="h-3.5 w-3.5" />
             </button>
           </div>
         ))}
       </div>
 
-      <div className="border-t border-[var(--color-border)] p-2">
+      {/* Bottom Rail Actions */}
+      <div className="border-t border-[var(--color-border)] p-2 flex flex-col gap-0.5">
         <RailItem
           icon={<Plus className="h-4 w-4" strokeWidth={1.75} />}
-          label="Add repository"
+          label="Add Repository"
           onClick={onAddRepo}
         />
         <RailItem
@@ -127,11 +162,11 @@ export function LeftRail({
         />
       </div>
 
-      {/* Context menu portal */}
+      {/* Repository Context Menu */}
       {contextMenu && (
         <div
           ref={menuRef}
-          className="fixed z-50 min-w-[160px] rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-lg"
+          className="fixed z-50 min-w-[170px] rounded-[var(--radius-dialog)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-2xl animate-fadeIn"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <ContextMenuItem
@@ -143,8 +178,13 @@ export function LeftRail({
             }}
           />
           <ContextMenuItem
+            icon={copied ? <Check className="h-3.5 w-3.5 text-[var(--color-ok)]" /> : <Copy className="h-3.5 w-3.5" />}
+            label={copied ? "Path Copied!" : "Copy Path"}
+            onClick={() => copyPath(contextMenu.repoPath)}
+          />
+          <ContextMenuItem
             icon={<RefreshCw className="h-3.5 w-3.5" />}
-            label="Refresh"
+            label="Refresh Status"
             onClick={() => {
               onRefreshRepo(contextMenu.repoId);
               setContextMenu(null);
@@ -153,7 +193,7 @@ export function LeftRail({
           <div className="my-1 border-t border-[var(--color-border)]" />
           <ContextMenuItem
             icon={<Trash2 className="h-3.5 w-3.5" />}
-            label="Remove from GitOutbox"
+            label="Remove Repository"
             danger
             onClick={() => {
               onRemoveRepo(contextMenu.repoId, contextMenu.repoName);
@@ -169,12 +209,14 @@ export function LeftRail({
 function RailItem({
   icon,
   label,
+  title,
   active,
   onClick,
   onContextMenu,
 }: {
   icon: React.ReactNode;
   label: string;
+  title?: string;
   active?: boolean;
   onClick?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
@@ -183,13 +225,17 @@ function RailItem({
     <button
       onClick={onClick}
       onContextMenu={onContextMenu}
-      className={`flex w-full items-center gap-2.5 truncate rounded-[var(--radius-control)] px-3 py-1.5 text-left text-xs transition-colors duration-150 ${
+      title={title}
+      className={`relative flex w-full items-center gap-2.5 truncate rounded-[var(--radius-control)] px-3 py-1.5 text-left text-xs transition-all duration-150 cursor-pointer ${
         active
-          ? "bg-[var(--color-surface-2)] text-[var(--color-text)]"
+          ? "bg-[var(--color-surface-2)] text-[var(--color-text)] font-semibold"
           : "text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
       }`}
     >
-      <span className={active ? "text-[var(--color-accent)]" : ""}>{icon}</span>
+      {active && (
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 h-3.5 w-1 rounded-r bg-[var(--color-accent)]" />
+      )}
+      <span className={active ? "text-[var(--color-accent)]" : "text-[var(--color-muted)]"}>{icon}</span>
       <span className="truncate">{label}</span>
     </button>
   );
@@ -198,25 +244,25 @@ function RailItem({
 function ContextMenuItem({
   icon,
   label,
-  onClick,
   danger,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
-  onClick: () => void;
   danger?: boolean;
+  onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-2 px-3 py-1.5 text-xs ${
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors cursor-pointer ${
         danger
-          ? "text-[var(--color-danger)] hover:bg-[color-mix(in_srgb,var(--color-danger)_10%,transparent)]"
+          ? "text-[var(--color-danger)] hover:bg-[color-mix(in_srgb,var(--color-danger)_15%,transparent)]"
           : "text-[var(--color-text)] hover:bg-[var(--color-surface-2)]"
       }`}
     >
       {icon}
-      {label}
+      <span>{label}</span>
     </button>
   );
 }
