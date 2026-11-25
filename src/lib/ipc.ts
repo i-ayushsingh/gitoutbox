@@ -45,6 +45,7 @@ export interface QueueItemFile {
 export interface QueueItem {
   id: number;
   queue_id: number;
+  repository_id: number;
   title: string;
   commit_message: string;
   target_branch: string;
@@ -106,6 +107,18 @@ export interface ActivityEvent {
   metadata: string | null;
   commit_message: string | null;
   commit_hash: string | null;
+}
+
+export interface AppPreferences {
+  autostart: boolean;
+  start_minimized: boolean;
+  close_to_tray: boolean;
+  minimize_to_tray: boolean;
+  notify_commit: boolean;
+  notify_push: boolean;
+  notify_failure: boolean;
+  notify_missed: boolean;
+  notify_update: boolean;
 }
 
 export const api = {
@@ -240,6 +253,11 @@ export const api = {
   getSchedulerPaused: () => invoke<boolean>("get_scheduler_paused"),
 
   setSchedulerPaused: (paused: boolean) => invoke<boolean>("set_scheduler_paused", { paused }),
+
+  getAppPreferences: () => invoke<AppPreferences>("get_app_preferences"),
+
+  setAppPreferences: (prefs: AppPreferences) =>
+    invoke<void>("set_app_preferences", { prefs }),
 
   openAppDataDir: () => invoke<void>("open_app_data_dir"),
 };

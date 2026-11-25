@@ -23,7 +23,13 @@ import {
   Trash2,
   Terminal,
 } from "lucide-react";
-import { api, type GitCheck as GitCheckResult, type QueueItem, type ActivityEvent } from "../lib/ipc";
+import {
+  api,
+  type AppPreferences,
+  type GitCheck as GitCheckResult,
+  type QueueItem,
+  type ActivityEvent,
+} from "../lib/ipc";
 import { Button, Mono } from "./ui";
 
 export type SettingsTab =
@@ -93,6 +99,9 @@ export function SettingsView({
   const [releaseChannel, setReleaseChannel] = useState<"stable" | "beta">(() => (localStorage.getItem("gitoutbox.release_channel") as "beta") || "stable");
   const [lastChecked, setLastChecked] = useState<string | null>(() => localStorage.getItem("gitoutbox.last_checked_update"));
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<"up_to_date" | "update_available" | "error">("up_to_date");
+  const [latestVersion, setLatestVersion] = useState<{ tag: string; url: string } | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   // General settings state
   const [autostart, setAutostart] = useState(() => localStorage.getItem("gitoutbox.autostart") === "1");
@@ -136,6 +145,18 @@ export function SettingsView({
 
     api.listActivityEvents(10).then((events) => {
       setRecentEvents(events);
+    }).catch(() => {});
+
+    api.getAppPreferences().then((prefs) => {
+      setAutostart(prefs.autostart);
+      setStartMinimized(prefs.start_minimized);
+      setCloseToTray(prefs.close_to_tray);
+      setMinimizeToTray(prefs.minimize_to_tray);
+      setNotifyCommitSuccess(prefs.notify_commit);
+      setNotifyPushSuccess(prefs.notify_push);
+      setNotifyFailure(prefs.notify_failure);
+      setNotifyMissed(prefs.notify_missed);
+      setNotifyUpdate(prefs.notify_update);
     }).catch(() => {});
   }, []);
 
@@ -186,14 +207,38 @@ export function SettingsView({
     }
   };
 
-  const handleCheckUpdate = () => {
+  const handleCheckUpdate = async () => {
     setCheckingUpdate(true);
-    setTimeout(() => {
+    setUpdateError(null);
+    try {
+      const res = await fetch("https://api.github.com/repos/i-ayushsingh/gitoutbox/releases/latest", {
+        headers: { Accept: "application/vnd.github+json" },
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data: { tag_name?: string; html_url?: string } = await res.json();
+      const tag = data.tag_name?.trim() ?? "";
+      const url = data.html_url || "https://github.com/i-ayushsingh/gitoutbox/releases/latest";
       const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      setLastChecked(`Today at ${nowStr}`);
-      localStorage.setItem("gitoutbox.last_checked_update", `Today at ${nowStr}`);
+      const checkedLabel = `Today at ${nowStr}`;
+      setLastChecked(checkedLabel);
+      localStorage.setItem("gitoutbox.last_checked_update", checkedLabel);
+
+      if (tag && tag !== "v0.2.1") {
+        setUpdateStatus("update_available");
+        setLatestVersion({ tag, url });
+      } else {
+        setUpdateStatus("up_to_date");
+        setLatestVersion(null);
+      }
+    } catch (err) {
+      setUpdateStatus("error");
+      setLatestVersion(null);
+      setUpdateError(err instanceof Error ? err.message : "Network error");
+    } finally {
       setCheckingUpdate(false);
-    }, 1200);
+    }
   };
 
   const handleOpenAppData = async () => {
@@ -223,6 +268,62 @@ export function SettingsView({
 
   const saveSetting = (key: string, val: string) => {
     localStorage.setItem(key, val);
+  };
+
+  const updateAppPreference = <K extends keyof AppPreferences>(key: K, value: boolean) => {
+    const nextPrefs: AppPreferences = {
+      autostart,
+      start_minimized: startMinimized,
+      close_to_tray: closeToTray,
+      minimize_to_tray: minimizeToTray,
+      notify_commit: notifyCommitSuccess,
+      notify_push: notifyPushSuccess,
+      notify_failure: notifyFailure,
+      notify_missed: notifyMissed,
+      notify_update: notifyUpdate,
+      [key]: value,
+    };
+
+    switch (key) {
+      case "autostart":
+        setAutostart(value);
+        saveSetting("gitoutbox.autostart", value ? "1" : "0");
+        break;
+      case "start_minimized":
+        setStartMinimized(value);
+        saveSetting("gitoutbox.start_minimized", value ? "1" : "0");
+        break;
+      case "close_to_tray":
+        setCloseToTray(value);
+        saveSetting("gitoutbox.close_to_tray", value ? "1" : "0");
+        break;
+      case "minimize_to_tray":
+        setMinimizeToTray(value);
+        saveSetting("gitoutbox.minimize_to_tray", value ? "1" : "0");
+        break;
+      case "notify_commit":
+        setNotifyCommitSuccess(value);
+        saveSetting("gitoutbox.notify_commit", value ? "1" : "0");
+        break;
+      case "notify_push":
+        setNotifyPushSuccess(value);
+        saveSetting("gitoutbox.notify_push", value ? "1" : "0");
+        break;
+      case "notify_failure":
+        setNotifyFailure(value);
+        saveSetting("gitoutbox.notify_failure", value ? "1" : "0");
+        break;
+      case "notify_missed":
+        setNotifyMissed(value);
+        saveSetting("gitoutbox.notify_missed", value ? "1" : "0");
+        break;
+      case "notify_update":
+        setNotifyUpdate(value);
+        saveSetting("gitoutbox.notify_update", value ? "1" : "0");
+        break;
+    }
+
+    api.setAppPreferences(nextPrefs).catch(() => {});
   };
 
   // Next scheduled item calculation
@@ -279,7 +380,7 @@ export function SettingsView({
               >
                 <Toggle
                   checked={autostart}
-                  onChange={(v) => { setAutostart(v); saveSetting("gitoutbox.autostart", v ? "1" : "0"); }}
+                  onChange={(v) => updateAppPreference("autostart", v)}
                 />
               </Row>
               <Row
@@ -288,7 +389,7 @@ export function SettingsView({
               >
                 <Toggle
                   checked={startMinimized}
-                  onChange={(v) => { setStartMinimized(v); saveSetting("gitoutbox.start_minimized", v ? "1" : "0"); }}
+                  onChange={(v) => updateAppPreference("start_minimized", v)}
                 />
               </Row>
               <Row
@@ -297,7 +398,7 @@ export function SettingsView({
               >
                 <Toggle
                   checked={closeToTray}
-                  onChange={(v) => { setCloseToTray(v); saveSetting("gitoutbox.close_to_tray", v ? "1" : "0"); }}
+                  onChange={(v) => updateAppPreference("close_to_tray", v)}
                 />
               </Row>
               <Row
@@ -306,7 +407,7 @@ export function SettingsView({
               >
                 <Toggle
                   checked={minimizeToTray}
-                  onChange={(v) => { setMinimizeToTray(v); saveSetting("gitoutbox.minimize_to_tray", v ? "1" : "0"); }}
+                  onChange={(v) => updateAppPreference("minimize_to_tray", v)}
                 />
               </Row>
             </Section>
@@ -439,11 +540,11 @@ export function SettingsView({
             </Section>
 
             <Section title="Automated Retry Policy">
-              <Row title="Maximum Retries" desc="Consecutive attempt limit before pausing item">
-                <Mono className="text-xs text-[var(--color-text)] font-medium">3 attempts</Mono>
+              <Row title="Maximum Retries" desc="Push retry limit before pausing item">
+                <Mono className="text-xs text-[var(--color-text)] font-medium">3 push retries</Mono>
               </Row>
-              <Row title="Retry Delay Intervals" desc="Exponential backoff algorithm">
-                <Mono className="text-[11px] text-[var(--color-muted)]">30s → 120s → 300s</Mono>
+              <Row title="Retry Delay Intervals" desc="Backoff intervals before pausing">
+                <Mono className="text-[11px] text-[var(--color-muted)]">30s → 120s</Mono>
               </Row>
             </Section>
           </div>
@@ -493,7 +594,7 @@ export function SettingsView({
               >
                 <Toggle
                   checked={notifyCommitSuccess}
-                  onChange={(v) => { setNotifyCommitSuccess(v); saveSetting("gitoutbox.notify_commit", v ? "1" : "0"); }}
+                  onChange={(v) => updateAppPreference("notify_commit", v)}
                 />
               </Row>
               <Row
@@ -502,7 +603,7 @@ export function SettingsView({
               >
                 <Toggle
                   checked={notifyPushSuccess}
-                  onChange={(v) => { setNotifyPushSuccess(v); saveSetting("gitoutbox.notify_push", v ? "1" : "0"); }}
+                  onChange={(v) => updateAppPreference("notify_push", v)}
                 />
               </Row>
               <Row
@@ -511,7 +612,7 @@ export function SettingsView({
               >
                 <Toggle
                   checked={notifyFailure}
-                  onChange={(v) => { setNotifyFailure(v); saveSetting("gitoutbox.notify_failure", v ? "1" : "0"); }}
+                  onChange={(v) => updateAppPreference("notify_failure", v)}
                 />
               </Row>
               <Row
@@ -520,7 +621,7 @@ export function SettingsView({
               >
                 <Toggle
                   checked={notifyMissed}
-                  onChange={(v) => { setNotifyMissed(v); saveSetting("gitoutbox.notify_missed", v ? "1" : "0"); }}
+                  onChange={(v) => updateAppPreference("notify_missed", v)}
                 />
               </Row>
               <Row
@@ -529,7 +630,7 @@ export function SettingsView({
               >
                 <Toggle
                   checked={notifyUpdate}
-                  onChange={(v) => { setNotifyUpdate(v); saveSetting("gitoutbox.notify_update", v ? "1" : "0"); }}
+                  onChange={(v) => updateAppPreference("notify_update", v)}
                 />
               </Row>
             </Section>
@@ -578,13 +679,27 @@ export function SettingsView({
 
             <Section title="Version Metrics">
               <Row title="Current Version" desc="Installed desktop build">
-                <Mono className="text-xs text-[var(--color-accent)] font-semibold">v0.2.0</Mono>
+                <Mono className="text-xs text-[var(--color-accent)] font-semibold">v0.2.1</Mono>
               </Row>
               <Row title="Last Checked" desc="Timestamp of previous update check">
                 <span className="text-xs text-[var(--color-muted)]">{lastChecked ?? "Never"}</span>
               </Row>
               <Row title="Update Status" desc="Release check result">
-                <StatusBadge ok={true} text="Up to date" />
+                {updateStatus === "up_to_date" && <StatusBadge ok={true} text="Up to date" />}
+                {updateStatus === "update_available" && latestVersion && (
+                  <a
+                    href={latestVersion.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--color-accent)_15%,transparent)] px-2.5 py-0.5 text-[10px] font-semibold text-[var(--color-accent)] border border-[color-mix(in_srgb,var(--color-accent)_30%,transparent)] hover:underline"
+                  >
+                    <span>Update available: {latestVersion.tag}</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+                {updateStatus === "error" && (
+                  <StatusBadge ok={false} text={updateError ? `Check failed (${updateError})` : "Check failed"} />
+                )}
               </Row>
             </Section>
 
@@ -669,7 +784,7 @@ export function SettingsView({
                 <ShieldCheck className="h-6 w-6 text-[var(--color-accent)]" />
                 <div>
                   <div className="text-sm font-bold text-[var(--color-text)]">GitOutbox Desktop</div>
-                  <div className="text-xs text-[var(--color-muted)]">Version 0.2.0 (Windows x64)</div>
+                  <div className="text-xs text-[var(--color-muted)]">Version 0.2.1 (Windows x64)</div>
                 </div>
               </div>
               <p className="text-xs text-[var(--color-muted)] leading-relaxed">

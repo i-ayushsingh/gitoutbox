@@ -13,6 +13,7 @@ pub mod executor;
 pub use change::{Change, ChangeType, parse_status};
 pub use git::{
     GitError, GitOutput, check_git_installed, git_version, git_identity,
+    git_executable_path, git_default_branch,
     inspect_repository, get_status, get_current_branch, is_operation_in_progress,
     RepoInspection, GitIdentity,
 };

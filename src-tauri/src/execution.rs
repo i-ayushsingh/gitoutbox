@@ -226,7 +226,7 @@ pub fn execute_item(db: &Db, locks: &ExecutionLocks, item_id: i64, repository_pa
         match push_one(db, checked.context.repository.id, item_id, &checked.repo_root, &hash) {
             Ok(()) => {
                 db.complete_execution(item_id, &hash).map_err(|e| e.to_string())?;
-                db.complete_all_push_pending(checked.context.repository.id).map_err(|e| e.to_string())?;
+                db.complete_all_push_pending(checked.context.repository.id, &checked.context.item.target_branch).map_err(|e| e.to_string())?;
                 event(db, checked.context.repository.id, Some(item_id), "completed", &format!("Push succeeded for {hash}; no recommit performed"));
                 Ok(hash)
             }
@@ -270,7 +270,7 @@ pub fn execute_item(db: &Db, locks: &ExecutionLocks, item_id: i64, repository_pa
         }
         db.complete_execution(item_id, &hash).map_err(|e| e.to_string())?;
         if requires_push(&mode) {
-            db.complete_all_push_pending(context.repository.id).map_err(|e| e.to_string())?;
+            db.complete_all_push_pending(context.repository.id, &context.item.target_branch).map_err(|e| e.to_string())?;
         }
         event(db, context.repository.id, Some(item_id), "completed", &format!("Completed commit {hash}"));
         Ok(hash)
@@ -361,7 +361,7 @@ pub fn execute_batch(db: &Db, locks: &ExecutionLocks, item_ids: &[i64], reposito
             for (item_id, hash) in &committed {
                 db.complete_execution(*item_id, hash).map_err(|e| e.to_string())?;
             }
-            db.complete_all_push_pending(first.repository.id).map_err(|e| e.to_string())?;
+            db.complete_all_push_pending(first.repository.id, &first.item.target_branch).map_err(|e| e.to_string())?;
             event(db, first.repository.id, None, "push_succeeded", &format!("Push-at-end succeeded for {} commits", committed.len()));
             Ok(committed)
         }

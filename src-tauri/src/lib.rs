@@ -97,6 +97,8 @@ pub fn handle_missed_schedules(db: &Db, notifier: Option<&dyn Fn(&str, &str)>) {
     }
 
     let policy = db.get_missed_schedule_policy();
+    let notify_missed = db.get_app_preferences().notify_missed;
+    let notifier = if notify_missed { notifier } else { None };
     let item_ids: Vec<i64> = overdue_items.iter().map(|(id, _, _)| *id).collect();
 
     match policy.as_str() {
@@ -187,6 +189,8 @@ pub fn tick_scheduler(db: &Db, locks: &ExecutionLocks, notifier: Option<&dyn Fn(
         return;
     }
 
+    let prefs = db.get_app_preferences();
+
     // Group due items by repository_id to serialize execution
     let mut groups: std::collections::HashMap<i64, Vec<db::DueItemInfo>> = std::collections::HashMap::new();
     for item in due_items {
@@ -216,19 +220,23 @@ pub fn tick_scheduler(db: &Db, locks: &ExecutionLocks, notifier: Option<&dyn Fn(
             let repo_path = &first.repository_path;
             match execution::execute_item(db, locks, first.id, repo_path) {
                 Ok(hash) => {
-                    if let Some(f) = notifier {
-                        f(
-                            "GitOutbox Success",
-                            &format!("Successfully pushed retry commit {}", &hash[..7]),
-                        );
+                    if prefs.notify_push {
+                        if let Some(f) = notifier {
+                            f(
+                                "GitOutbox Success",
+                                &format!("Successfully pushed retry commit {}", &hash[..7]),
+                            );
+                        }
                     }
                 }
                 Err(err) => {
-                    if let Some(f) = notifier {
-                        f(
-                            "GitOutbox Error",
-                            &format!("Push retry failed: {}", err),
-                        );
+                    if prefs.notify_failure {
+                        if let Some(f) = notifier {
+                            f(
+                                "GitOutbox Error",
+                                &format!("Push retry failed: {}", err),
+                            );
+                        }
                     }
                 }
             }
@@ -259,20 +267,24 @@ pub fn tick_scheduler(db: &Db, locks: &ExecutionLocks, notifier: Option<&dyn Fn(
                     let count = batch_ids.len();
                     match execution::execute_batch(db, locks, &batch_ids, repo_path) {
                         Ok(committed) => {
-                            if let Some(f) = notifier {
-                                f(
-                                    "GitOutbox Success",
-                                    &format!("Successfully committed and pushed batch of {} items", committed.len()),
-                                );
+                            if prefs.notify_commit || prefs.notify_push {
+                                if let Some(f) = notifier {
+                                    f(
+                                        "GitOutbox Success",
+                                        &format!("Successfully committed and pushed batch of {} items", committed.len()),
+                                    );
+                                }
                             }
                             idx += count;
                         }
                         Err(err) => {
-                            if let Some(f) = notifier {
-                                f(
-                                    "GitOutbox Error",
-                                    &format!("Batch execution failed: {}", err),
-                                );
+                            if prefs.notify_failure {
+                                if let Some(f) = notifier {
+                                    f(
+                                        "GitOutbox Error",
+                                        &format!("Batch execution failed: {}", err),
+                                    );
+                                }
                             }
                             // Abort subsequent items for this repository to prevent safety issues
                             break;
@@ -284,20 +296,29 @@ pub fn tick_scheduler(db: &Db, locks: &ExecutionLocks, notifier: Option<&dyn Fn(
             } else {
                 match execution::execute_item(db, locks, item.id, repo_path) {
                     Ok(hash) => {
-                        if let Some(f) = notifier {
-                            f(
-                                "GitOutbox Success",
-                                &format!("Successfully completed scheduled commit {}", &hash[..7]),
-                            );
+                        let should_notify = if item.execution_mode == "commit_only" {
+                            prefs.notify_commit
+                        } else {
+                            prefs.notify_commit || prefs.notify_push
+                        };
+                        if should_notify {
+                            if let Some(f) = notifier {
+                                f(
+                                    "GitOutbox Success",
+                                    &format!("Successfully completed scheduled commit {}", &hash[..7]),
+                                );
+                            }
                         }
                         idx += 1;
                     }
                     Err(err) => {
-                        if let Some(f) = notifier {
-                            f(
-                                "GitOutbox Error",
-                                &format!("Scheduled commit failed: {}", err),
-                            );
+                        if prefs.notify_failure {
+                            if let Some(f) = notifier {
+                                f(
+                                    "GitOutbox Error",
+                                    &format!("Scheduled commit failed: {}", err),
+                                );
+                            }
                         }
                         // Abort subsequent items for this repository
                         break;
@@ -426,9 +447,16 @@ pub fn run() {
             let db_clone = db.clone();
             let locks = ExecutionLocks::new();
             let locks_clone = locks.clone();
-            
+            let start_minimized = db.get_app_preferences().start_minimized;
+
             app.manage(db);
             app.manage(locks);
+
+            if start_minimized {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
 
             // Spawn the background scheduler loop (skips tick if paused)
             let app_handle_clone2 = app_handle.clone();
@@ -452,8 +480,17 @@ pub fn run() {
         })
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {
-                api.prevent_close();
-                let _ = window.hide();
+                let prefs = window.app_handle().state::<Db>().get_app_preferences();
+                if prefs.close_to_tray {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+            tauri::WindowEvent::Resized(_) => {
+                let prefs = window.app_handle().state::<Db>().get_app_preferences();
+                if prefs.minimize_to_tray && window.is_minimized().unwrap_or(false) {
+                    let _ = window.hide();
+                }
             }
             _ => {}
         })
@@ -499,6 +536,8 @@ pub fn run() {
             commands::get_scheduler_paused,
             commands::set_scheduler_paused,
             commands::open_app_data_dir,
+            commands::get_app_preferences,
+            commands::set_app_preferences,
         ])
 
         .run(tauri::generate_context!())

@@ -159,7 +159,7 @@ export default function App() {
   const handleReviewPaused = useCallback(() => {
     const firstPaused = allScheduledItems.find((i) => i.status === "Paused");
     if (firstPaused) {
-      switchToRepo(firstPaused.queue_id);
+      switchToRepo(firstPaused.repository_id);
     }
   }, [allScheduledItems, switchToRepo]);
 
@@ -423,7 +423,7 @@ function TodayView({
               {time}
             </div>
             {timeItems.map((item) => {
-              const repo = repositories.find((r) => r.id === item.queue_id);
+              const repo = repositories.find((r) => r.id === item.repository_id);
               return (
                 <div key={item.id} className="flex items-start gap-3 border-b border-[var(--color-border)] px-4 py-2">
                   <div className="min-w-0 flex-1">
@@ -503,7 +503,7 @@ function AllQueuesView({
               const time = item.scheduled_time
                 ? new Date(item.scheduled_time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                 : "";
-              const repo = repositories.find((r) => r.id === item.queue_id);
+              const repo = repositories.find((r) => r.id === item.repository_id);
               return (
                 <div key={item.id} className="flex items-start gap-3 border-b border-[var(--color-border)] px-4 py-2">
                   <span className="shrink-0 w-14 text-right font-[family-name:var(--font-mono)] text-[10px] text-[var(--color-faint)]">

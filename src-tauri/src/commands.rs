@@ -17,6 +17,8 @@ pub struct GitCheck {
     pub version: Option<String>,
     pub user_name: Option<String>,
     pub user_email: Option<String>,
+    pub git_path: Option<String>,
+    pub default_branch: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -60,15 +62,26 @@ fn to_dto(c: &core::Change) -> ChangeDto {
 #[tauri::command]
 pub async fn git_check() -> GitCheck {
     if !core::check_git_installed() {
-        return GitCheck { installed: false, version: None, user_name: None, user_email: None };
+        return GitCheck {
+            installed: false,
+            version: None,
+            user_name: None,
+            user_email: None,
+            git_path: None,
+            default_branch: None,
+        };
     }
     let version = core::git_version().ok();
     let identity = core::git_identity().unwrap_or(core::GitIdentity { name: None, email: None });
+    let git_path = core::git_executable_path();
+    let default_branch = core::git_default_branch();
     GitCheck {
         installed: true,
         version,
         user_name: identity.name,
         user_email: identity.email,
+        git_path,
+        default_branch,
     }
 }
 
@@ -183,6 +196,7 @@ pub struct QueueItemFileDto {
 pub struct QueueItemDto {
     pub id: i64,
     pub queue_id: i64,
+    pub repository_id: i64,
     pub title: String,
     pub commit_message: String,
     pub target_branch: String,
@@ -223,6 +237,7 @@ fn item_to_dto(i: crate::db::QueueItem) -> QueueItemDto {
     QueueItemDto {
         id: i.id,
         queue_id: i.queue_id,
+        repository_id: i.repository_id,
         title: i.title,
         commit_message: i.commit_message,
         target_branch: i.target_branch,
@@ -608,9 +623,62 @@ pub async fn retry_paused_items(
     item_ids: Vec<i64>,
     repository_path: String,
 ) -> Result<(), String> {
+    let mut errors = Vec::new();
     for id in item_ids {
-        let _ = crate::execution::execute_item(&db, &locks, id, &repository_path);
+        if let Err(err) = crate::execution::execute_item(&db, &locks, id, &repository_path) {
+            errors.push(format!("Item {id}: {err}"));
+        }
     }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn get_app_preferences(db: State<'_, Db>) -> Result<crate::db::AppPreferences, String> {
+    Ok(db.get_app_preferences())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn set_app_preferences(
+    db: State<'_, Db>,
+    prefs: crate::db::AppPreferences,
+) -> Result<(), String> {
+    let prev = db.get_app_preferences();
+    if prefs.autostart != prev.autostart {
+        sync_windows_autostart(prefs.autostart)?;
+    }
+    db.set_app_preferences(&prefs).map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn sync_windows_autostart(enabled: bool) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+
+    let mut cmd = std::process::Command::new("reg.exe");
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    if enabled {
+        let exe = std::env::current_exe().map_err(|e| format!("Failed to resolve executable path: {e}"))?;
+        let quoted = format!("\"{}\"", exe.display());
+        cmd.args(["ADD", RUN_KEY, "/v", "GitOutbox", "/t", "REG_SZ", "/d", &quoted, "/f"]);
+        let out = cmd.output().map_err(|e| format!("Failed to run reg.exe: {e}"))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            return Err(format!("Failed to enable autostart: {stderr}"));
+        }
+    } else {
+        cmd.args(["DELETE", RUN_KEY, "/v", "GitOutbox", "/f"]);
+        let _ = cmd.output();
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn sync_windows_autostart(_enabled: bool) -> Result<(), String> {
     Ok(())
 }
 

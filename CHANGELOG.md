@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.2.1 (2026-11-25)
+
+This maintenance and reliability release fixes critical commit-recovery, branch-scoping, and UI state bugs, wires desktop lifecycle and notification preferences to the Rust backend, and replaces the placeholder update check with a real GitHub Releases check.
+
+### Fixed
+
+- **Safe Reschedule & Unschedule Recovery**: Preserved `commit_hash` during `reschedule_item` (routing committed items to `PushPending` for push-only recovery instead of re-committing) and blocked `unschedule_items` from reverting already-committed items back to `Draft`.
+- **Branch-Scoped Push Completion**: Scoped `complete_all_push_pending` by `(repository_id, target_branch)` so pushing one branch no longer marks `PushPending` items on other branches as `Completed`.
+- **Draft Edit Guard**: Restricted `update_queue_item` and `update_queue_item_full` to `Draft` items only, preventing accidental edits to scheduled, executing, or completed items.
+- **Paused Retry Error Reporting**: Updated `retry_paused_items` to aggregate and surface execution errors instead of silently swallowing them.
+- **Repository ID Mapping**: Added `repository_id` to `QueueItem` / `QueueItemDto` and updated `App.tsx` (`handleReviewPaused`, `TodayView`, `AllQueuesView`) to match repositories by `repository_id` instead of `queue_id`.
+- **Recovery UX in Drafts View**: Added `PushPending` and `Running` status grouping/badges, exposed `Retry Now` and `Reschedule` actions on `Paused` / `PushPending` cards, restricted `Edit Message & Files` to `Draft` items, and disabled bulk `Schedule Selected` when non-drafts are selected.
+- **Repo Tab Auto-Switch**: Limited automatic switching to the `Drafts` tab for paused items to once per repository visit so users aren't pulled away from `Changes` on queue refreshes.
+- **Multi-Day Schedule Date Parsing**: Parsed `YYYY-MM-DD` dates in local time instead of UTC midnight in `ScheduleComposer`, fixing an off-by-one day shift in negative UTC offsets.
+- **Git Environment Details**: Populated `git_path` and `default_branch` in `git_check` to match the frontend `GitCheck` contract.
+
+### Changed
+
+- **Persisted Desktop & Notification Preferences**: Added `AppPreferences` (`get_app_preferences` / `set_app_preferences`) in SQLite and wired `autostart` (Windows Run key), `start_minimized`, `close_to_tray`, `minimize_to_tray`, and granular notification toggles (`notify_commit`, `notify_push`, `notify_failure`, `notify_missed`, `notify_update`) in the Rust backend.
+- **Real Update Check & Accurate Retry Policy Text**: Replaced the simulated `setTimeout` update check in Settings with a live GitHub Releases API check against `v0.2.1`, and aligned the Retry Policy UI description with the backend (`3 push retries`, `30s → 120s` backoff).
+
+---
+
 ## v0.2.0 (2026-07-25)
 
 The official v0.2.0 release brings complete desktop UX polish, dedicated Git & Scheduler management views, redesigned event timeline activity logs, structured status queue management, and a Developer Demo Data Generator.

@@ -31,6 +31,8 @@ function getItemStatusGroup(status: string): StatusTab {
     case "Staging":
     case "Committing":
     case "Pushing":
+    case "PushPending":
+    case "Running":
     case "Executing":
       return "executing";
     case "Completed":
@@ -162,6 +164,11 @@ export function DraftsView({
     [items, selectedIds]
   );
 
+  const allSelectedAreDrafts = useMemo(
+    () => selectedItems.length > 0 && selectedItems.every((i) => i.status === "Draft"),
+    [selectedItems]
+  );
+
   const handleBulkDelete = async () => {
     try {
       await Promise.all(selectedItems.map((i) => api.removeQueueItem(i.id)));
@@ -272,7 +279,11 @@ export function DraftsView({
             <span>{selectedIds.size} draft{selectedIds.size === 1 ? "" : "s"} selected</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="primary" onClick={() => { onSchedule(selectedItems); setSelectedIds(new Set()); }}>
+            <Button
+              variant="primary"
+              disabled={!allSelectedAreDrafts}
+              onClick={() => { onSchedule(selectedItems); setSelectedIds(new Set()); }}
+            >
               <CalendarClock className="h-3.5 w-3.5" /> Schedule Selected
             </Button>
             <Button variant="default" onClick={handleBulkRunNow}>
@@ -366,18 +377,20 @@ function QueueItemCard({
   onReturnToDraft: () => void;
   onDelete: () => void;
 }) {
-  const statusVariant = {
+  const statusVariant = ({
     Draft: "default",
     Scheduled: "accent",
     Validating: "accent",
     Staging: "accent",
     Committing: "accent",
     Pushing: "accent",
+    PushPending: "accent",
+    Running: "accent",
     Completed: "ok",
     Paused: "warn",
     Failed: "danger",
     Skipped: "warn",
-  }[item.status] as "default" | "ok" | "warn" | "danger" | "accent";
+  }[item.status] ?? "default") as "default" | "ok" | "warn" | "danger" | "accent";
 
   const scheduledTimeStr = item.scheduled_time
     ? new Date(item.scheduled_time * 1000).toLocaleString([], {
@@ -455,6 +468,16 @@ function QueueItemCard({
               </Button>
             </>
           )}
+          {(item.status === "Paused" || item.status === "PushPending") && (
+            <>
+              <Button variant="primary" onClick={onRunNow} className="py-1 px-2.5 text-[11px]">
+                <Play className="h-3.5 w-3.5" /> Retry Now
+              </Button>
+              <Button variant="default" onClick={onReschedule} className="py-1 px-2 text-[11px]">
+                <CalendarClock className="h-3.5 w-3.5 text-[var(--color-accent)]" /> Reschedule
+              </Button>
+            </>
+          )}
           <button
             onClick={onToggleExpand}
             className="rounded p-1.5 text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] cursor-pointer"
@@ -506,10 +529,12 @@ function QueueItemCard({
           {/* Extended Card Actions */}
           <div className="flex items-center justify-between border-t border-[var(--color-border)] pt-3 mt-1">
             <div className="flex items-center gap-2">
-              <Button variant="default" onClick={onEdit}>
-                <Pencil className="h-3.5 w-3.5" /> Edit Message & Files
-              </Button>
-              {item.status === "Scheduled" && (
+              {item.status === "Draft" && (
+                <Button variant="default" onClick={onEdit}>
+                  <Pencil className="h-3.5 w-3.5" /> Edit Message & Files
+                </Button>
+              )}
+              {(item.status === "Scheduled" || (item.status === "Paused" && !item.commit_hash)) && (
                 <Button variant="default" onClick={onReturnToDraft}>
                   <RotateCcw className="h-3.5 w-3.5" /> Return to Draft
                 </Button>

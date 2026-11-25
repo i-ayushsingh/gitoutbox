@@ -124,12 +124,13 @@ export function ScheduleComposer({
   // Initialize multi-day allocations.
   useEffect(() => {
     if (mode !== "multiday" || n === 0) return;
+    const [y, m, day] = dayStartDate.split("-").map(Number);
+    if (!y || !m || !day) return;
     const basePerDay = Math.floor(n / dayCount);
     const remainder = n % dayCount;
     const newDays: DayConfig[] = [];
     for (let i = 0; i < dayCount; i++) {
-      const d = new Date(dayStartDate);
-      d.setDate(d.getDate() + i);
+      const d = new Date(y, m - 1, day + i);
       const yyyy = d.getFullYear();
       const mm = String(d.getMonth() + 1).padStart(2, "0");
       const dd = String(d.getDate()).padStart(2, "0");

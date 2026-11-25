@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Layers, GitCommitHorizontal, Plus } from "lucide-react";
 import {
   api,
@@ -75,12 +75,20 @@ export function RepoView({
   useEffect(loadStatus, [loadStatus]);
   useEffect(loadAssignedFiles, [loadAssignedFiles]);
 
+  const autoSwitchedForPausedRef = useRef(false);
+
   useEffect(() => {
+    autoSwitchedForPausedRef.current = false;
+  }, [repo.id]);
+
+  useEffect(() => {
+    if (autoSwitchedForPausedRef.current) return;
     const hasPaused = queueItems.some((i) => i.status === "Paused");
     if (hasPaused) {
+      autoSwitchedForPausedRef.current = true;
       setTab("drafts");
     }
-  }, [queueItems]);
+  }, [queueItems, repo.id]);
 
   const branch = status?.current_branch ?? null;
   const changes = status?.changes ?? [];

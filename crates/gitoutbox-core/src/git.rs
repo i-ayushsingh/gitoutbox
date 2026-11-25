@@ -141,6 +141,30 @@ pub fn git_identity() -> Result<GitIdentity, GitError> {
     })
 }
 
+/// Configured `init.defaultBranch` if set.
+pub fn git_default_branch() -> Option<String> {
+    config_value("init.defaultBranch")
+}
+
+/// Find the `git` executable on `PATH`, returning its full path if found.
+pub fn git_executable_path() -> Option<String> {
+    let path_var = std::env::var_os("PATH")?;
+    #[cfg(windows)]
+    let candidates = ["git.exe", "git"];
+    #[cfg(not(windows))]
+    let candidates = ["git"];
+
+    for dir in std::env::split_paths(&path_var) {
+        for name in candidates {
+            let candidate = dir.join(name);
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().to_string());
+            }
+        }
+    }
+    None
+}
+
 fn config_value(key: &str) -> Option<String> {
     let out = run_git(None, &["config", "--get", key]).ok()?;
     if out.success {
