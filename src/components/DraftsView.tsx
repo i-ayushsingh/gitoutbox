@@ -529,7 +529,7 @@ function QueueItemCard({
           {/* Extended Card Actions */}
           <div className="flex items-center justify-between border-t border-[var(--color-border)] pt-3 mt-1">
             <div className="flex items-center gap-2">
-              {item.status === "Draft" && (
+              {(item.status === "Draft" || item.status === "Scheduled") && (
                 <Button variant="default" onClick={onEdit}>
                   <Pencil className="h-3.5 w-3.5" /> Edit Message & Files
                 </Button>

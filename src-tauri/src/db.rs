@@ -547,10 +547,10 @@ impl Db {
             [id],
             |r| r.get(0),
         )?;
-        if status != "Draft" {
+        if status != "Draft" && status != "Scheduled" {
             return Err(rusqlite::Error::SqliteFailure(
                 rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT),
-                Some(format!("Only Draft items can be edited (current status: {status})")),
+                Some(format!("Only Draft or Scheduled items can be edited (current status: {status})")),
             ));
         }
         conn.execute(
@@ -583,10 +583,10 @@ impl Db {
             [id],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
-        if status != "Draft" {
+        if status != "Draft" && status != "Scheduled" {
             return Err(rusqlite::Error::SqliteFailure(
                 rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT),
-                Some(format!("Only Draft items can be edited (current status: {status})")),
+                Some(format!("Only Draft or Scheduled items can be edited (current status: {status})")),
             ));
         }
 
