@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.2.2 (2026-11-25)
+
+This release persists scheduler pause state across restarts, keeps the system tray and Settings UI in sync, cleans up Settings links and update options, and incorporates the latest Rust and npm dependency updates.
+
+### Changed
+
+- **Persistent Scheduler Pause & Tray Sync**: Persisted `scheduler_paused` in SQLite `settings`, restored it on app startup, and kept the system tray `Pause Scheduler` / `Resume Scheduler` label synchronized with Settings toggles.
+- **Live Scheduler Metrics**: Added 3-second live polling on the Scheduler settings tab so engine status, pending queue count, executing item, last execution, and next scheduled time update automatically.
+- **Execution Mode Clarity**: Clarified that Execution Mode applies to newly scheduled commits.
+- **Simplified Updates Tab**: Removed the unused Release Channel selector from Settings.
+- **Dependency Updates**: Merged `rusqlite` `0.41` (PR #12) and updated npm dependencies (PR #13).
+
+### Fixed
+
+- **About Links**: Connected **Windows SmartScreen Guide**, **Release Notes & Changelog**, **Report an Issue**, and **MIT License** in the About tab to their proper GitHub URLs instead of broken relative paths.
+
+---
+
 ## v0.2.1 (2026-11-25)
 
 This maintenance and reliability release fixes critical commit-recovery, branch-scoping, and UI state bugs, wires desktop lifecycle and notification preferences to the Rust backend, and replaces the placeholder update check with a real GitHub Releases check.

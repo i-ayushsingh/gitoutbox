@@ -688,8 +688,14 @@ pub async fn get_scheduler_paused() -> Result<bool, String> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub async fn set_scheduler_paused(paused: bool) -> Result<bool, String> {
+pub async fn set_scheduler_paused(
+    db: State<'_, Db>,
+    tray_pause: State<'_, crate::TrayPauseItem>,
+    paused: bool,
+) -> Result<bool, String> {
     SCHEDULER_PAUSED.store(paused, Ordering::Relaxed);
+    db.set_scheduler_paused(paused).map_err(|e| e.to_string())?;
+    let _ = tray_pause.0.set_text(if paused { "Resume Scheduler" } else { "Pause Scheduler" });
     Ok(paused)
 }
 

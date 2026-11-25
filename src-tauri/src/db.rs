@@ -1559,6 +1559,28 @@ impl Db {
         Ok(())
     }
 
+    /// Get the persisted scheduler paused state from SQLite settings.
+    pub fn get_scheduler_paused(&self) -> bool {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT value FROM settings WHERE key = 'scheduler_paused'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+    }
+
+    /// Persist the scheduler paused state in SQLite settings.
+    pub fn set_scheduler_paused(&self, paused: bool) -> rusqlite::Result<()> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('scheduler_paused', ?1)",
+            [if paused { "1" } else { "0" }],
+        )?;
+        Ok(())
+    }
+
     /// Get persisted application preferences from SQLite settings.
     pub fn get_app_preferences(&self) -> AppPreferences {
         let conn = self.0.lock().unwrap();

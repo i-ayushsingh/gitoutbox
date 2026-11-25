@@ -85,7 +85,7 @@ export function LeftRail({
           GitOutbox
         </span>
         <span className="ml-auto rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--color-faint)]">
-          v0.2.1
+          v0.2.2
         </span>
       </div>
 

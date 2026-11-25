@@ -329,6 +329,9 @@ pub fn tick_scheduler(db: &Db, locks: &ExecutionLocks, notifier: Option<&dyn Fn(
     }
 }
 
+/// Managed handle to the system tray Pause/Resume menu item so IPC commands can keep its label in sync.
+pub struct TrayPauseItem(pub tauri::menu::MenuItem<tauri::Wry>);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -338,6 +341,8 @@ pub fn run() {
             let dir = app.path().app_data_dir().expect("app data dir");
             std::fs::create_dir_all(&dir)?;
             let db = Db::open(&dir.join("gitoutbox.db"))?;
+            let initial_paused = db.get_scheduler_paused();
+            commands::SCHEDULER_PAUSED.store(initial_paused, std::sync::atomic::Ordering::Relaxed);
 
             // Reconcile each stale item against its own persisted repository.
             if let Ok(reconciled) = db.reconcile_all_on_startup() {
@@ -365,7 +370,12 @@ pub fn run() {
 
             // System tray icon setup with Open, Pause/Resume, Quit
             let open_i = MenuItemBuilder::with_id("open", "Open GitOutbox").build(app)?;
-            let pause_i = MenuItemBuilder::with_id("pause", "Pause Scheduler").build(app)?;
+            let pause_i = MenuItemBuilder::with_id(
+                "pause",
+                if initial_paused { "Resume Scheduler" } else { "Pause Scheduler" },
+            )
+            .build(app)?;
+            app.manage(TrayPauseItem(pause_i.clone()));
             let quit_i = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             let menu = MenuBuilder::new(app)
                 .items(&[&open_i, &pause_i, &quit_i])
@@ -406,6 +416,7 @@ pub fn run() {
                     let current = commands::SCHEDULER_PAUSED.load(Ordering::Relaxed);
                     let new_state = !current;
                     commands::SCHEDULER_PAUSED.store(new_state, Ordering::Relaxed);
+                    let _ = app.state::<Db>().set_scheduler_paused(new_state);
                     let _ = pause_i.set_text(if new_state { "Resume Scheduler" } else { "Pause Scheduler" });
                     let _ = app.notification()
                         .builder()

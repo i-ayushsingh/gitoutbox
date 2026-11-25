@@ -96,7 +96,6 @@ export function SettingsView({
 
   // Updates state
   const [autoUpdateCheck, setAutoUpdateCheck] = useState(() => localStorage.getItem("gitoutbox.auto_update_check") !== "0");
-  const [releaseChannel, setReleaseChannel] = useState<"stable" | "beta">(() => (localStorage.getItem("gitoutbox.release_channel") as "beta") || "stable");
   const [lastChecked, setLastChecked] = useState<string | null>(() => localStorage.getItem("gitoutbox.last_checked_update"));
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<"up_to_date" | "update_available" | "error">("up_to_date");
@@ -177,6 +176,18 @@ export function SettingsView({
     }
   }, [activeTab, gitCheck, checkingGit]);
 
+  useEffect(() => {
+    if (activeTab !== "scheduler") return;
+    const refreshSchedulerMetrics = () => {
+      api.getSchedulerPaused().then(setSchedulerPaused).catch(() => {});
+      api.listAllScheduledItems().then(setScheduledItems).catch(() => {});
+      api.listActivityEvents(10).then(setRecentEvents).catch(() => {});
+    };
+    refreshSchedulerMetrics();
+    const id = setInterval(refreshSchedulerMetrics, 3000);
+    return () => clearInterval(id);
+  }, [activeTab]);
+
   const handleModeChange = async (mode: string) => {
     const prev = executionMode;
     setExecutionMode(mode);
@@ -225,7 +236,7 @@ export function SettingsView({
       setLastChecked(checkedLabel);
       localStorage.setItem("gitoutbox.last_checked_update", checkedLabel);
 
-      if (tag && tag !== "v0.2.1") {
+      if (tag && tag !== "v0.2.2") {
         setUpdateStatus("update_available");
         setLatestVersion({ tag, url });
       } else {
@@ -553,7 +564,7 @@ export function SettingsView({
         {/* Execution */}
         {activeTab === "execution" && (
           <div className="max-w-xl animate-fadeIn">
-            <Header title="Execution Mode" desc="Controls how scheduled commits stage and push to upstream." />
+            <Header title="Execution Mode" desc="Controls how newly scheduled commits stage and push to upstream." />
 
             <Section title="Git Delivery Target">
               <div className="divide-y divide-[var(--color-border)]">
@@ -640,7 +651,7 @@ export function SettingsView({
         {/* Updates */}
         {activeTab === "updates" && (
           <div className="max-w-xl animate-fadeIn">
-            <Header title="Software Updates" desc="Manage release channels and check for application updates." />
+            <Header title="Software Updates" desc="Check for application updates and view current build details." />
 
             <Section title="Update Settings">
               <Row
@@ -652,34 +663,11 @@ export function SettingsView({
                   onChange={(v) => { setAutoUpdateCheck(v); saveSetting("gitoutbox.auto_update_check", v ? "1" : "0"); }}
                 />
               </Row>
-              <Row
-                title="Release Channel"
-                desc="Select release channel for version updates"
-              >
-                <div className="flex rounded-[var(--radius-control)] bg-[var(--color-surface-2)] p-0.5 border border-[var(--color-border)]">
-                  <button
-                    onClick={() => { setReleaseChannel("stable"); saveSetting("gitoutbox.release_channel", "stable"); }}
-                    className={`rounded px-2.5 py-1 text-xs font-medium cursor-pointer ${
-                      releaseChannel === "stable" ? "bg-[var(--color-surface)] text-[var(--color-text)] font-semibold shadow-sm" : "text-[var(--color-muted)] hover:text-[var(--color-text)]"
-                    }`}
-                  >
-                    Stable
-                  </button>
-                  <button
-                    onClick={() => { setReleaseChannel("beta"); saveSetting("gitoutbox.release_channel", "beta"); }}
-                    className={`rounded px-2.5 py-1 text-xs font-medium cursor-pointer ${
-                      releaseChannel === "beta" ? "bg-[var(--color-surface)] text-[var(--color-text)] font-semibold shadow-sm" : "text-[var(--color-muted)] hover:text-[var(--color-text)]"
-                    }`}
-                  >
-                    Beta (future)
-                  </button>
-                </div>
-              </Row>
             </Section>
 
             <Section title="Version Metrics">
               <Row title="Current Version" desc="Installed desktop build">
-                <Mono className="text-xs text-[var(--color-accent)] font-semibold">v0.2.1</Mono>
+                <Mono className="text-xs text-[var(--color-accent)] font-semibold">v0.2.2</Mono>
               </Row>
               <Row title="Last Checked" desc="Timestamp of previous update check">
                 <span className="text-xs text-[var(--color-muted)]">{lastChecked ?? "Never"}</span>
@@ -784,7 +772,7 @@ export function SettingsView({
                 <ShieldCheck className="h-6 w-6 text-[var(--color-accent)]" />
                 <div>
                   <div className="text-sm font-bold text-[var(--color-text)]">GitOutbox Desktop</div>
-                  <div className="text-xs text-[var(--color-muted)]">Version 0.2.1 (Windows x64)</div>
+                  <div className="text-xs text-[var(--color-muted)]">Version 0.2.2 (Windows x64)</div>
                 </div>
               </div>
               <p className="text-xs text-[var(--color-muted)] leading-relaxed">
@@ -796,7 +784,7 @@ export function SettingsView({
             <Section title="Links & Guides">
               <Row title="Windows SmartScreen Guide" desc="Instructions for unsigned binary prompts">
                 <a
-                  href="docs/SMARTSCREEN_GUIDE.md"
+                  href="https://github.com/i-ayushsingh/gitoutbox/blob/main/docs/SMARTSCREEN_GUIDE.md"
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center gap-1 text-xs text-[var(--color-accent)] hover:underline"
@@ -814,8 +802,35 @@ export function SettingsView({
                   <span>Repository</span> <ExternalLink className="h-3 w-3" />
                 </a>
               </Row>
+              <Row title="Release Notes & Changelog" desc="Version history and release updates">
+                <a
+                  href="https://github.com/i-ayushsingh/gitoutbox/blob/main/CHANGELOG.md"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 text-xs text-[var(--color-accent)] hover:underline"
+                >
+                  <span>Changelog</span> <ExternalLink className="h-3 w-3" />
+                </a>
+              </Row>
+              <Row title="Report an Issue" desc="Bug reports and feature requests">
+                <a
+                  href="https://github.com/i-ayushsingh/gitoutbox/issues"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 text-xs text-[var(--color-accent)] hover:underline"
+                >
+                  <span>GitHub Issues</span> <ExternalLink className="h-3 w-3" />
+                </a>
+              </Row>
               <Row title="License" desc="MIT Open Source License">
-                <span className="text-xs text-[var(--color-muted)]">MIT License</span>
+                <a
+                  href="https://github.com/i-ayushsingh/gitoutbox/blob/main/LICENSE"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 text-xs text-[var(--color-accent)] hover:underline"
+                >
+                  <span>MIT License</span> <ExternalLink className="h-3 w-3" />
+                </a>
               </Row>
             </Section>
           </div>
